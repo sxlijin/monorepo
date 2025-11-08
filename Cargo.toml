@@ -1,0 +1,3 @@
+[workspace]
+members = ["my-first-package"]
+resolver = "2"
