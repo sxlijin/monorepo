@@ -8,3 +8,6 @@ name = "watch"
 path = "src/bin/watch.rs"
 
 [dependencies]
+axum = { version = "0.7", features = ["ws"] }
+anyhow = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
