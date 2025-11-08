@@ -2,7 +2,7 @@ use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::mpsc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -83,6 +83,7 @@ async fn stream_watch_events(
             Err(broadcast::error::RecvError::Lagged(skipped)) => {
                 let notice = json!({
                     "type": "fs-error",
+                    "timestamp": now_millis(),
                     "message": format!("client lagged and skipped {skipped} events"),
                 });
                 if socket
@@ -128,12 +129,10 @@ fn watch_loop(
         .watcher()
         .watch(&watch_dir, RecursiveMode::Recursive)?;
 
-    let mut sequence = 0u64;
     for result in event_rx {
         match result {
             Ok(events_batch) => {
                 for event in events_batch {
-                    sequence += 1;
                     let paths: Vec<String> = event
                         .paths
                         .iter()
@@ -142,7 +141,7 @@ fn watch_loop(
 
                     let payload = json!({
                         "type": "fs-event",
-                        "sequence": sequence,
+                        "timestamp": now_millis(),
                         "kind": format!("{:?}", event.kind),
                         "paths": paths,
                     });
@@ -154,6 +153,7 @@ fn watch_loop(
                 for error in errors {
                     let payload = json!({
                         "type": "fs-error",
+                        "timestamp": now_millis(),
                         "message": error.to_string(),
                     });
 
@@ -172,6 +172,13 @@ fn relative_path(root: &Path, candidate: &Path) -> String {
         .unwrap_or(candidate)
         .display()
         .to_string()
+}
+
+fn now_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
 }
 
 async fn shutdown_signal() {

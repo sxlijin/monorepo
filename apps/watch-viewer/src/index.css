@@ -45,6 +45,78 @@ ol {
   min-height: 200px;
 }
 
+.pane-primary {
+  max-width: 600px;
+}
+
+.tree {
+  list-style: none;
+  padding-left: 12px;
+  margin: 0;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.collapse-btn {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #333;
+  background: #000;
+  color: inherit;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+}
+
+.collapse-placeholder {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+}
+
+.tree-node {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.tree-node:hover,
+.tree-node.selected {
+  text-decoration: underline;
+}
+
+.tree .count {
+  opacity: 0.6;
+}
+
+.clear {
+  margin-top: 8px;
+  padding: 4px 6px;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.stats {
+  margin-top: 12px;
+  border-top: 1px solid #333;
+  padding-top: 8px;
+}
+
+code {
+  background: #000;
+  padding: 2px 4px;
+}
+
 @media (max-width: 720px) {
   .layout {
     flex-direction: column;
