@@ -16,5 +16,9 @@ node_modules/
 yarn.lock
 package-lock.json
 
+# Vite
+dist/
+.vite/
+
 # Logs
 *.log
