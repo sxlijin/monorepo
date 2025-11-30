@@ -1,0 +1,4 @@
+[taskbar]
+cmd = "echo bar1 >> bar.log"
+watch = ["*.txt"]
+persistent = true

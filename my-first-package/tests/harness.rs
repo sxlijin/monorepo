@@ -24,6 +24,13 @@ impl Harness {
         Ok(Self { _temp_dir: temp_dir, dir })
     }
 
+    pub fn from_testdata(test_name: &str) -> Result<Self> {
+        let harness = Self::new(test_name)?;
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata").join(test_name);
+        copy_dir_all(&root, &harness.dir)?;
+        Ok(harness)
+    }
+
     pub fn write_tasks(&self, contents: &str) -> Result<()> {
         fs::write(self.dir.join(db::TASKS_FILE_NAME), contents)
             .context("write tasks.toml")
@@ -42,4 +49,23 @@ impl Harness {
         let mut cmd = self.run_cli(args)?;
         cmd.spawn().context("spawn watch")
     }
+}
+
+fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> Result<()> {
+    if !src.exists() {
+        anyhow::bail!("testdata path not found: {}", src.display());
+    }
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else {
+            fs::create_dir_all(dest_path.parent().unwrap())?;
+            fs::copy(entry.path(), &dest_path)?;
+        }
+    }
+    Ok(())
 }

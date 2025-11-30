@@ -32,31 +32,27 @@ struct AppState {
 pub async fn run_watch_server(
     watch_dir: PathBuf,
     addr: SocketAddr,
-    task_selection: tasks::TaskSelection,
+    task_selections: Vec<tasks::TaskSelection>,
 ) -> anyhow::Result<()> {
     let (events_tx, _) = broadcast::channel(512);
 
     spawn_fs_watcher(watch_dir.clone(), events_tx.clone())?;
 
-    let task_db = tasks::TaskDb::new(task_selection.dir.clone());
-    if let Err(err) = task_db.reload() {
-        eprintln!("{err}");
-    } else {
-        println!(
-            "loaded tasks from {}",
-            task_db.tasks_path().display()
-        );
+    let task_db = tasks::TaskDb::new();
+    for selection in &task_selections {
+        task_db.add_root(selection.dir.clone());
+        let _ = task_db.reload_root(&selection.dir);
     }
 
     tasks::TaskScheduler::new(
-        task_selection.clone(),
+        task_selections.clone(),
         task_db.clone(),
         watch_dir.clone(),
         events_tx.subscribe(),
     )
     .spawn();
 
-    spawn_task_reloader(events_tx.clone(), task_db.clone(), watch_dir.clone());
+    spawn_task_reloader(events_tx.clone(), task_db.clone(), task_selections.clone(), watch_dir.clone());
 
     let app_state = AppState {
         events: events_tx,
@@ -197,47 +193,57 @@ async fn shutdown_signal() {
 fn spawn_task_reloader(
     events: broadcast::Sender<String>,
     task_db: tasks::TaskDb,
+    task_selections: Vec<tasks::TaskSelection>,
     watch_root: PathBuf,
 ) {
     let mut rx = events.subscribe();
-    let tasks_path = task_db.tasks_path();
-    let tasks_rel = relative_path(&watch_root, &tasks_path);
-    let tasks_rel_trimmed = tasks_rel.trim_start_matches("./").to_string();
+    let task_paths: Vec<(PathBuf, String, String)> = task_selections
+        .iter()
+        .map(|sel| {
+            let tasks_path = sel.dir.join(tasks::TASKS_FILE_NAME);
+            let rel = relative_path(&watch_root, &tasks_path);
+            let trimmed = rel.trim_start_matches("./").to_string();
+            (sel.dir.clone(), rel, trimmed)
+        })
+        .collect();
 
     tokio::spawn(async move {
         while let Ok(payload) = rx.recv().await {
-            if tasks_file_touched(&payload, &tasks_rel, &tasks_rel_trimmed) {
-                if let Err(err) = task_db.reload() {
+            if let Some(root) = tasks_file_touched(&payload, &task_paths) {
+                let tasks_path = root.join(tasks::TASKS_FILE_NAME);
+                if let Err(err) = task_db.reload_root(&root) {
                     eprintln!("{err}");
                 } else {
-                    println!(
-                        "reloaded tasks from {}",
-                        tasks_path.display()
-                    );
+                    println!("reloaded tasks from {}", tasks_path.display());
                 }
             }
         }
     });
 }
 
-fn tasks_file_touched(payload: &str, rel_path: &str, rel_path_trimmed: &str) -> bool {
+fn tasks_file_touched(payload: &str, task_paths: &[(PathBuf, String, String)]) -> Option<PathBuf> {
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) {
         if value.get("type").and_then(|t| t.as_str()) != Some("fs-event") {
-            return false;
+            return None;
         }
 
         if let Some(paths) = value.get("paths").and_then(|p| p.as_array()) {
             for path in paths.iter().filter_map(|p| p.as_str()) {
                 let normalized = path.trim_start_matches("./");
-                if path == rel_path || normalized == rel_path_trimmed {
-                    return true;
-                }
-                if path.ends_with(tasks::TASKS_FILE_NAME) && normalized.ends_with(tasks::TASKS_FILE_NAME) {
-                    return true;
+                for (root, rel_path, rel_trimmed) in task_paths {
+                    if path == rel_path || normalized == rel_trimmed {
+                        return Some(root.clone());
+                    }
+                    if path.ends_with(tasks::TASKS_FILE_NAME)
+                        && normalized.ends_with(tasks::TASKS_FILE_NAME)
+                        && (path.contains(rel_path) || normalized.contains(rel_trimmed))
+                    {
+                        return Some(root.clone());
+                    }
                 }
             }
         }
     }
 
-    false
+    None
 }

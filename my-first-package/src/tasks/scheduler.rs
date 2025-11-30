@@ -1,5 +1,6 @@
 use std::{
-    path::Path,
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -13,21 +14,16 @@ use tokio::{
 
 use crate::tasks::db::{ReloadEvent, Task, TaskDb, TaskEntry, TaskSelection};
 
-pub struct TaskScheduler {
-    selection: TaskSelection,
-    task_db: TaskDb,
-    watch_root: std::path::PathBuf,
-    fs_rx: broadcast::Receiver<String>,
-    reload_rx: broadcast::Receiver<ReloadEvent>,
-    current_task: Option<ScheduledTask>,
-    running: Option<RunningTask>,
-    last_seen_version: u64,
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct TaskKey {
+    root: PathBuf,
+    name: String,
 }
 
 #[derive(Clone)]
 struct ScheduledTask {
     task: Task,
-    hash: u64,
+    _hash: u64,
     globset: GlobSet,
 }
 
@@ -36,23 +32,37 @@ struct RunningTask {
     persistent: bool,
 }
 
+pub struct TaskScheduler {
+    selections: Vec<TaskSelection>,
+    task_db: TaskDb,
+    watch_root: PathBuf,
+    fs_rx: broadcast::Receiver<String>,
+    reload_rx: broadcast::Receiver<ReloadEvent>,
+    scheduled: HashMap<TaskKey, ScheduledTask>,
+    running: HashMap<TaskKey, RunningTask>,
+    root_versions: HashMap<PathBuf, u64>,
+    roots: Vec<PathBuf>,
+}
+
 impl TaskScheduler {
     pub fn new(
-        selection: TaskSelection,
+        selections: Vec<TaskSelection>,
         task_db: TaskDb,
-        watch_root: std::path::PathBuf,
+        watch_root: PathBuf,
         fs_rx: broadcast::Receiver<String>,
     ) -> Self {
         let reload_rx = task_db.subscribe();
+        let roots = selections.iter().map(|s| s.dir.clone()).collect();
         TaskScheduler {
-            selection,
+            selections,
             task_db,
             watch_root,
             fs_rx,
             reload_rx,
-            current_task: None,
-            running: None,
-            last_seen_version: 0,
+            scheduled: HashMap::new(),
+            running: HashMap::new(),
+            root_versions: HashMap::new(),
+            roots,
         }
     }
 
@@ -65,16 +75,19 @@ impl TaskScheduler {
     }
 
     async fn init_from_db(&mut self) {
-        self.load_current_task().await;
-        if let Some(task) = self.current_task.as_ref() {
-            self.start_task(&format!("initial start of '{}'", self.selection.name), task.hash)
-                .await;
-        } else {
-            eprintln!(
-                "error- failed to resolve task: task '{}' not found in {}",
-                self.selection.name,
-                self.task_db.tasks_path().display()
-            );
+        let selections = self.selections.clone();
+        for selection in selections {
+            self.load_task(&selection).await;
+        }
+
+        // Start persistent tasks immediately.
+        let keys_to_start: Vec<TaskKey> = self
+            .scheduled
+            .iter()
+            .filter_map(|(key, task)| task.task.persistent.then_some(key.clone()))
+            .collect();
+        for key in keys_to_start {
+            self.start_task(&key, "initial persistent start").await;
         }
     }
 
@@ -96,49 +109,95 @@ impl TaskScheduler {
         }
     }
 
-    async fn load_current_task(&mut self) {
-        let snapshot = self.task_db.snapshot();
-        self.last_seen_version = snapshot.version;
-        let maybe_entry = snapshot.tasks.get(&self.selection.name);
-        self.current_task =
-            maybe_entry.and_then(|entry| build_scheduled_task(entry.clone()).ok());
-        if maybe_entry.is_none() {
-            if let Some(mut running) = self.running.take() {
-                self.stop_running(&mut running).await;
+    async fn load_task(&mut self, selection: &TaskSelection) {
+        let snapshot = match self.task_db.snapshot(&selection.dir) {
+            Some(s) => s,
+            None => {
+                eprintln!(
+                    "error- failed to resolve task: task '{}' not found in {}",
+                    selection.name,
+                    selection.dir.join(super::db::TASKS_FILE_NAME).display()
+                );
+                return;
             }
-            eprintln!(
-                "error- failed to resolve task: task '{}' not found in {}",
-                self.selection.name,
-                self.task_db.tasks_path().display()
-            );
+        };
+
+        self.root_versions
+            .entry(selection.dir.clone())
+            .or_insert(snapshot.version);
+
+        let maybe_entry = snapshot.tasks.get(&selection.name);
+        match maybe_entry.and_then(|entry| build_scheduled_task(entry.clone()).ok()) {
+            Some(task) => {
+                let key = TaskKey {
+                    root: selection.dir.clone(),
+                    name: selection.name.clone(),
+                };
+                self.scheduled.insert(key, task);
+            }
+            None => {
+                eprintln!(
+                    "error- failed to resolve task: task '{}' not found in {}",
+                    selection.name,
+                    selection.dir.join(super::db::TASKS_FILE_NAME).display()
+                );
+            }
         }
     }
 
     async fn handle_reload_event(&mut self, event: ReloadEvent) {
         match event {
-            ReloadEvent::ReloadFailed { message } => {
-                eprintln!("{message}");
-                return;
+            ReloadEvent::ReloadFailed { root, message } => {
+                if self.root_tracked(&root) {
+                    eprintln!("{message}");
+                }
             }
-            ReloadEvent::Reloaded { version, .. } => {
-                if version <= self.last_seen_version {
+            ReloadEvent::Reloaded {
+                root,
+                version,
+                changes,
+            } => {
+                if !self.root_tracked(&root) {
                     return;
                 }
-                self.last_seen_version = version;
-                let before_hash = self.current_task.as_ref().map(|t| t.hash);
-                self.load_current_task().await;
-                let after_hash = self.current_task.as_ref().map(|t| t.hash);
+                let prev_version = self.root_versions.get(&root).cloned().unwrap_or(0);
+                if version <= prev_version {
+                    return;
+                }
+                self.root_versions.insert(root.clone(), version);
 
-                if self.running.is_some()
-                    && before_hash.is_some()
-                    && after_hash.is_some()
-                    && before_hash != after_hash
-                {
-                    self.restart_persistent_on_change().await;
-                } else if self.running.is_none() {
-                    if let Some(task) = self.current_task.clone() {
+                // Refresh scheduled entries for this root.
+                let selections: Vec<TaskSelection> = self
+                    .selections
+                    .iter()
+                    .filter(|s| s.dir == root)
+                    .cloned()
+                    .collect();
+                for sel in selections.iter() {
+                    self.load_task(sel).await;
+                }
+
+                // Stop removed tasks.
+                for removed_name in changes.removed {
+                    let key = TaskKey {
+                        root: root.clone(),
+                        name: removed_name.clone(),
+                    };
+                    if let Some(mut running) = self.running.remove(&key) {
+                        self.stop_running(&mut running, &removed_name).await;
+                    }
+                    self.scheduled.remove(&key);
+                }
+
+                // Restart persistent tasks whose definitions changed.
+                for changed_name in changes.changed {
+                    let key = TaskKey {
+                        root: root.clone(),
+                        name: changed_name.clone(),
+                    };
+                    if let Some(task) = self.scheduled.get(&key) {
                         if task.task.persistent {
-                            self.start_task("start persistent after reload", task.hash)
+                            self.start_task(&key, "restart after config change")
                                 .await;
                         }
                     }
@@ -148,91 +207,116 @@ impl TaskScheduler {
     }
 
     async fn handle_fs_event(&mut self, payload: &str) {
-        let Some(task) = self.current_task.clone() else {
+        let Some(paths) = extract_fs_paths(payload) else {
             return;
         };
 
-        if !paths_match_task(payload, &self.watch_root, &self.selection.dir, &task.globset) {
-            return;
+        let mut seen_keys = HashSet::new();
+        let mut dispatch_keys = Vec::new();
+        for path_str in paths {
+            let full_path = self.watch_root.join(&path_str);
+            for root in self.roots.iter() {
+                if let Ok(rel) = full_path.strip_prefix(root) {
+                    let rel_str = rel.to_string_lossy();
+                    for (key, task) in self.scheduled.iter() {
+                        if &key.root != root {
+                            continue;
+                        }
+                        if task.globset.is_match(rel_str.as_ref()) {
+                            if seen_keys.insert(key.clone()) {
+                                dispatch_keys.push(key.clone());
+                            }
+                        }
+                    }
+                }
+            }
         }
 
+        for key in dispatch_keys {
+            if let Some(task) = self.scheduled.get(&key).cloned() {
+                self.dispatch_task_for_event(key.clone(), task).await;
+            }
+        }
+    }
+
+    async fn dispatch_task_for_event(&mut self, key: TaskKey, task: ScheduledTask) {
         if task.task.persistent {
-            if self.running.is_none() {
-                self.start_task("start persistent task", task.hash).await;
+            if self.running.get(&key).is_none() {
+                self.start_task(&key, "start persistent task").await;
             }
         } else {
-            self.start_task("rerun non-persistent task", task.hash).await;
+            self.start_task(&key, "rerun non-persistent task").await;
         }
     }
 
-    async fn start_task(&mut self, reason: &str, expected_hash: u64) {
-        let Some(task) = self.current_task.clone() else {
+    async fn start_task(&mut self, key: &TaskKey, reason: &str) {
+        let Some(task) = self.scheduled.get(key).cloned() else {
             return;
         };
-        if task.hash != expected_hash {
-            return;
-        }
 
-        if let Some(mut running) = self.running.take() {
+        if let Some(mut running) = self.running.remove(key) {
             if running.persistent && task.task.persistent {
-                self.running = Some(running);
+                self.running.insert(key.clone(), running);
                 return;
             }
-            self.stop_running(&mut running).await;
+            self.stop_running(&mut running, &key.name).await;
         }
 
-        match spawn_process(&task.task, &self.selection.dir) {
+        match spawn_process(&task.task, &key.root) {
             Ok(child) => {
-                println!("task '{}' started ({reason})", self.selection.name);
-                self.running = Some(RunningTask {
-                    child,
-                    persistent: task.task.persistent,
-                });
+                println!("task '{}:{}' started ({reason})", key.root.display(), key.name);
+                self.running.insert(
+                    key.clone(),
+                    RunningTask {
+                        child,
+                        persistent: task.task.persistent,
+                    },
+                );
             }
             Err(err) => {
-                eprintln!("error starting task '{}': {err}", self.selection.name);
+                eprintln!("error starting task '{}:{}': {err}", key.root.display(), key.name);
             }
         }
     }
 
-    async fn restart_persistent_on_change(&mut self) {
-        if let Some(mut running) = self.running.take() {
-            self.stop_running(&mut running).await;
-        }
-        if let Some(task) = self.current_task.clone() {
-            if task.task.persistent {
-                self.start_task("restart after config change", task.hash)
-                    .await;
-            }
-        }
-    }
-
-    async fn stop_running(&mut self, running: &mut RunningTask) {
+    async fn stop_running(&mut self, running: &mut RunningTask, name: &str) {
         if let Err(err) = running.child.kill().await {
-            eprintln!("failed to stop task '{}': {err}", self.selection.name);
+            eprintln!("failed to stop task '{}': {err}", name);
         }
         let _ = running.child.wait().await;
     }
 
     async fn check_running_exit(&mut self) {
-        let mut needs_restart = None;
-        if let Some(running) = self.running.as_mut() {
+        let mut to_restart = Vec::new();
+        let mut to_remove = Vec::new();
+        for (key, running) in self.running.iter_mut() {
             match running.child.try_wait() {
                 Ok(Some(_status)) => {
-                    needs_restart = Some(running.persistent);
-                    self.running = None;
+                    if running.persistent {
+                        to_restart.push(key.clone());
+                    }
+                    to_remove.push(key.clone());
                 }
                 Ok(None) => {}
-                Err(err) => eprintln!("error waiting for task '{}': {err}", self.selection.name),
+                Err(err) => eprintln!(
+                    "error waiting for task '{}:{}': {err}",
+                    key.root.display(),
+                    key.name
+                ),
             }
         }
 
-        if let Some(true) = needs_restart {
-            if let Some(task) = self.current_task.clone() {
-                self.start_task("restart persistent task after exit", task.hash)
-                    .await;
-            }
+        for key in to_remove {
+            self.running.remove(&key);
         }
+        for key in to_restart {
+            self.start_task(&key, "restart persistent task after exit")
+                .await;
+        }
+    }
+
+    fn root_tracked(&self, root: &Path) -> bool {
+        self.roots.iter().any(|r| r == root)
     }
 }
 
@@ -240,7 +324,7 @@ fn build_scheduled_task(entry: TaskEntry) -> Result<ScheduledTask, globset::Erro
     let globset = build_globset(&entry.task.watch)?;
     Ok(ScheduledTask {
         task: entry.task,
-        hash: entry.hash,
+        _hash: entry.hash,
         globset,
     })
 }
@@ -257,29 +341,6 @@ fn spawn_process(task: &Task, dir: &Path) -> tokio::io::Result<Child> {
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg(&task.cmd).current_dir(dir);
     cmd.spawn()
-}
-
-fn paths_match_task(
-    payload: &str,
-    watch_root: &Path,
-    task_dir: &Path,
-    globset: &GlobSet,
-) -> bool {
-    let Some(paths) = extract_fs_paths(payload) else {
-        return false;
-    };
-
-    for path_str in paths {
-        let full_path = watch_root.join(&path_str);
-        if let Ok(rel_to_task) = full_path.strip_prefix(task_dir) {
-            let rel = rel_to_task.to_string_lossy();
-            if globset.is_match(rel.as_ref()) {
-                return true;
-            }
-        }
-    }
-
-    false
 }
 
 fn extract_fs_paths(payload: &str) -> Option<Vec<String>> {

@@ -21,7 +21,7 @@ pub struct Task {
     pub persistent: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TaskSelection {
     pub dir: PathBuf,
     pub name: String,
@@ -238,35 +238,29 @@ pub struct TaskChanges {
 
 #[derive(Clone, Debug)]
 pub enum ReloadEvent {
-    Reloaded { version: u64, changes: TaskChanges },
-    ReloadFailed { message: String },
+    Reloaded { root: PathBuf, version: u64, changes: TaskChanges },
+    ReloadFailed { root: PathBuf, message: String },
 }
 
 #[derive(Clone)]
 pub struct TaskDb {
-    inner: Arc<RwLock<TaskDbInner>>,
+    inner: Arc<RwLock<HashMap<PathBuf, RootState>>>,
     reload_tx: broadcast::Sender<ReloadEvent>,
-    tasks_dir: PathBuf,
 }
 
 #[derive(Clone, Debug)]
-struct TaskDbInner {
+struct RootState {
     version: u64,
     tasks: HashMap<String, TaskEntry>,
     metadata: Option<TasksMetadata>,
 }
 
 impl TaskDb {
-    pub fn new(tasks_dir: PathBuf) -> Self {
-        let (reload_tx, _) = broadcast::channel(16);
+    pub fn new() -> Self {
+        let (reload_tx, _) = broadcast::channel(32);
         TaskDb {
-            inner: Arc::new(RwLock::new(TaskDbInner {
-                version: 0,
-                tasks: HashMap::new(),
-                metadata: None,
-            })),
+            inner: Arc::new(RwLock::new(HashMap::new())),
             reload_tx,
-            tasks_dir,
         }
     }
 
@@ -274,13 +268,25 @@ impl TaskDb {
         self.reload_tx.subscribe()
     }
 
-    pub fn reload(&self) -> Result<(), TaskConfigError> {
-        let tasks_file = match load_tasks_file(&self.tasks_dir) {
+    pub fn add_root(&self, dir: PathBuf) {
+        let mut inner = self.inner.write().expect("task db poisoned");
+        inner.entry(dir).or_insert_with(|| RootState {
+            version: 0,
+            tasks: HashMap::new(),
+            metadata: None,
+        });
+    }
+
+    pub fn reload_root(&self, dir: &Path) -> Result<(), TaskConfigError> {
+        let dir = dir.to_path_buf();
+        self.add_root(dir.clone());
+        let tasks_file = match load_tasks_file(&dir) {
             Ok(file) => file,
             Err(err) => {
-                let _ = self
-                    .reload_tx
-                    .send(ReloadEvent::ReloadFailed { message: err.to_string() });
+                let _ = self.reload_tx.send(ReloadEvent::ReloadFailed {
+                    root: dir.clone(),
+                    message: err.to_string(),
+                });
                 return Err(err);
             }
         };
@@ -297,30 +303,34 @@ impl TaskDb {
 
         let (version, changes) = {
             let mut inner = self.inner.write().expect("task db poisoned");
-            let changes = diff_tasks(&inner.tasks, &new_tasks);
-            inner.tasks = new_tasks;
-            inner.metadata = Some(tasks_file.metadata);
-            inner.version = inner.version.saturating_add(1);
-            (inner.version, changes)
+            let state = inner.get_mut(&dir).expect("root must exist");
+            let changes = diff_tasks(&state.tasks, &new_tasks);
+            state.tasks = new_tasks;
+            state.metadata = Some(tasks_file.metadata);
+            state.version = state.version.saturating_add(1);
+            (state.version, changes)
         };
 
-        let _ = self
-            .reload_tx
-            .send(ReloadEvent::Reloaded { version, changes });
+        let _ = self.reload_tx.send(ReloadEvent::Reloaded {
+            root: dir,
+            version,
+            changes,
+        });
         Ok(())
     }
 
-    pub fn snapshot(&self) -> TaskSnapshot {
+    pub fn snapshot(&self, dir: &Path) -> Option<TaskSnapshot> {
         let inner = self.inner.read().expect("task db poisoned");
-        TaskSnapshot {
-            version: inner.version,
-            tasks: inner.tasks.clone(),
-            metadata: inner.metadata.clone(),
-        }
+        inner.get(dir).map(|state| TaskSnapshot {
+            version: state.version,
+            tasks: state.tasks.clone(),
+            metadata: state.metadata.clone(),
+        })
     }
 
-    pub fn tasks_path(&self) -> PathBuf {
-        self.tasks_dir.join(TASKS_FILE_NAME)
+    pub fn roots(&self) -> Vec<PathBuf> {
+        let inner = self.inner.read().expect("task db poisoned");
+        inner.keys().cloned().collect()
     }
 }
 

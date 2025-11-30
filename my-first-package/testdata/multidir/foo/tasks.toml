@@ -1,0 +1,4 @@
+[taskfoo]
+cmd = "echo foo >> foo.log"
+watch = ["*.txt"]
+persistent = false

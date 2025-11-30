@@ -123,3 +123,75 @@ persistent = true
     let _ = child.wait();
     Ok(())
 }
+
+#[test]
+#[serial]
+fn multi_dir_tasks_are_isolated() -> Result<()> {
+    if !port_available() {
+        eprintln!("skipping test: port 8080 unavailable");
+        return Ok(());
+    }
+
+    let harness = Harness::from_testdata("multidir")?;
+    let mut child = harness.spawn_watch("foo:taskfoo bar:taskbar")?;
+
+    let foo_log = harness.dir.join("foo").join("foo.log");
+    let bar_log = harness.dir.join("bar").join("bar.log");
+
+    fs::write(harness.dir.join("foo").join("a.txt"), "foo change")?;
+    wait_for_condition(Duration::from_secs(6), || Ok(foo_log.exists()))?;
+    assert!(!bar_log.exists());
+
+    fs::write(harness.dir.join("bar").join("b.txt"), "bar change")?;
+    wait_for_condition(Duration::from_secs(6), || Ok(bar_log.exists()))?;
+
+    let foo_content = fs::read_to_string(&foo_log).unwrap_or_default();
+    let bar_content = fs::read_to_string(&bar_log).unwrap_or_default();
+    assert!(foo_content.contains("foo"));
+    assert!(bar_content.contains("bar1"));
+
+    let _ = child.kill();
+    let _ = child.wait();
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn multi_dir_persistent_restarts_on_definition_change() -> Result<()> {
+    if !port_available() {
+        eprintln!("skipping test: port 8080 unavailable");
+        return Ok(());
+    }
+
+    let harness = Harness::from_testdata("multidir")?;
+    let mut child = harness.spawn_watch("bar:taskbar")?;
+
+    let bar_log = harness.dir.join("bar").join("bar.log");
+    wait_for_condition(Duration::from_secs(6), || Ok(bar_log.exists()))?;
+    wait_for_condition(Duration::from_secs(6), || {
+        Ok(fs::read_to_string(&bar_log)
+            .unwrap_or_default()
+            .contains("bar1"))
+    })?;
+
+    // Change bar task to bar2 and trigger reload.
+    fs::write(
+        harness.dir.join("bar").join("tasks.toml"),
+        r#"
+[taskbar]
+cmd = "echo bar2 >> bar.log"
+watch = ["*.txt"]
+persistent = true
+"#,
+    )?;
+
+    wait_for_condition(Duration::from_secs(8), || {
+        Ok(fs::read_to_string(&bar_log)
+            .unwrap_or_default()
+            .contains("bar2"))
+    })?;
+
+    let _ = child.kill();
+    let _ = child.wait();
+    Ok(())
+}

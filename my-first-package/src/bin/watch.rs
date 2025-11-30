@@ -11,58 +11,63 @@ async fn main() -> anyhow::Result<()> {
     let watch_dir = env::current_dir()?;
 
     let args: Vec<String> = env::args().collect();
-    let (task_selection, had_parse_error) = parse_task_selection(&args, &watch_dir);
-    if had_parse_error {
+    let (task_selections, had_parse_error) = parse_task_selections(&args, &watch_dir);
+    if had_parse_error || task_selections.is_empty() {
         eprintln!("error- failed to resolve task");
     }
 
-    run_watch_server(watch_dir, addr, task_selection).await
+    run_watch_server(watch_dir, addr, task_selections).await
 }
 
-fn parse_task_selection(args: &[String], cwd: &PathBuf) -> (TaskSelection, bool) {
+fn parse_task_selections(args: &[String], cwd: &PathBuf) -> (Vec<TaskSelection>, bool) {
     let mut had_error = false;
-    let spec = match args.get(1) {
-        Some(s) => s.as_str(),
-        None => {
-            had_error = true;
-            ":".into()
-        }
-    };
-
-    let (path_part, task_part) = match spec.rsplit_once(':') {
-        Some((path, task)) => (path, task),
-        None => {
-            had_error = true;
-            ("", spec)
-        }
-    };
-
-    let task_name = if task_part.is_empty() {
-        had_error = true;
-        "task"
-    } else {
-        task_part
-    };
-
-    let task_dir = if path_part.is_empty() {
-        cwd.clone()
-    } else {
-        cwd.join(path_part)
-    };
-
-    let selection = TaskSelection {
-        dir: task_dir,
-        name: task_name.to_string(),
-    };
-
-    if had_error {
-        eprintln!(
-            "expected '<path>:<task>', got '{}'; using {} for tasks.toml and task '{}'",
-            spec,
-            selection.dir.join(TASKS_FILE_NAME).display(),
-            selection.name
-        );
+    let mut selections = Vec::new();
+    if args.len() < 2 {
+        return (selections, true);
     }
 
-    (selection, had_error)
+    for spec in args.iter().skip(1) {
+        let (path_part, task_part) = match spec.rsplit_once(':') {
+            Some((path, task)) => (path, task),
+            None => {
+                had_error = true;
+                ("", spec.as_str())
+            }
+        };
+
+        let task_name = if task_part.is_empty() {
+            had_error = true;
+            "task"
+        } else {
+            task_part
+        };
+
+        let task_dir = if path_part.is_empty() {
+            cwd.clone()
+        } else {
+            cwd.join(path_part)
+        };
+
+        let selection = TaskSelection {
+            dir: task_dir,
+            name: task_name.to_string(),
+        };
+
+        if path_part.is_empty() && task_part.is_empty() {
+            had_error = true;
+        }
+
+        if had_error {
+            eprintln!(
+                "expected '<path>:<task>', got '{}'; using {} for task '{}'",
+                spec,
+                selection.dir.join(TASKS_FILE_NAME).display(),
+                selection.name
+            );
+        }
+
+        selections.push(selection);
+    }
+
+    (selections, had_error)
 }
