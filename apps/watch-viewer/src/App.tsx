@@ -111,11 +111,23 @@ function App() {
         return false;
       }
 
-      return event.data!.paths!.some((path) =>
-        path.startsWith(selectedPath)
-      );
+      return event.data!.paths!.some((path) => path.startsWith(selectedPath));
     });
   }, [events, selectedPath]);
+
+  const timelineWindowMs = 5 * 60 * 1000;
+  const timelineNow = Date.now();
+  const timelineStart = timelineNow - timelineWindowMs;
+  const timelineRange = Math.max(timelineWindowMs, 1);
+  const timelineEvents = events
+    .map((event) => {
+      const timestamp = timestampToNumber(event.data?.timestamp);
+      return timestamp == null ? null : { id: event.id, timestamp };
+    })
+    .filter(
+      (entry): entry is { id: number; timestamp: number } =>
+        entry !== null && entry.timestamp >= timelineStart
+    );
 
   return (
     <main>
@@ -124,6 +136,33 @@ function App() {
         <p>ws endpoint: {url}</p>
       </header>
       <p>status: {status}</p>
+
+      <section className="timeline-horizontal">
+        <div className="timeline-horizontal-header">
+          <h2>last 5 minutes</h2>
+          <span>
+            {new Date(timelineStart).toLocaleTimeString()} –{" "}
+            {new Date(timelineNow).toLocaleTimeString()}
+          </span>
+        </div>
+        <div className="timeline-track">
+          {timelineEvents.map((event) => {
+            const clamped = Math.min(
+              Math.max(event.timestamp, timelineStart),
+              timelineNow
+            );
+            const pct = ((clamped - timelineStart) / timelineRange) * 100;
+            return (
+              <span
+                key={`timeline-dot-${event.id}`}
+                className="timeline-dot"
+                style={{ left: `${pct}%` }}
+                title={new Date(event.timestamp).toLocaleTimeString()}
+              />
+            );
+          })}
+        </div>
+      </section>
 
       <div className="layout">
         <section className="pane pane-secondary">
@@ -309,4 +348,23 @@ function buildTree(paths: string[][]): TreeNode[] {
       }));
 
   return toImmutable(root);
+}
+
+function timestampToNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    if (!Number.isNaN(numeric)) {
+      return numeric;
+    }
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
 }

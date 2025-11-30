@@ -22,6 +22,35 @@ main {
   gap: 12px;
 }
 
+.timeline-horizontal {
+  border: 1px solid #333;
+  padding: 8px;
+}
+
+.timeline-horizontal-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  margin-bottom: 8px;
+}
+
+.timeline-track {
+  position: relative;
+  height: 6px;
+  background: #1f2937;
+  border-radius: 3px;
+}
+
+.timeline-dot {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f97316;
+  transform: translate(-50%, -50%);
+}
+
 pre {
   background: #000;
   padding: 8px;
