@@ -4,6 +4,6 @@ watch = ["*.py"]
 persistent = true
 
 [task2]
-cmd = "uv run python -c 'print(\"task2\")'"
+cmd = "uv run python -c 'print(\"task2 rev2\")'"
 watch = ["*.py"]
 persistent = false
