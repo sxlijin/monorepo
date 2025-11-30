@@ -1,0 +1,9 @@
+[task1]
+cmd = 123  # invalid: must be string
+watch = []
+persistent = "yes"  # invalid: must be bool
+
+[unexpected]
+cmd = "echo oops"
+watch = ["*.rs"]
+persistent = false

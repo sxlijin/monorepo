@@ -1,0 +1,9 @@
+[task1]
+cmd = "uv run python -c 'print(\"task1\")'"
+watch = ["*.py"]
+persistent = true
+
+[task2]
+cmd = "uv run python -c 'print(\"task2\")'"
+watch = ["*.py"]
+persistent = false

@@ -27,14 +27,40 @@ use tokio::{net::TcpListener, signal, sync::broadcast};
 #[derive(Clone)]
 struct AppState {
     events: broadcast::Sender<String>,
+    _task_state: tasks::TaskState,
 }
 
-pub async fn run_watch_server(watch_dir: PathBuf, addr: SocketAddr) -> anyhow::Result<()> {
+pub async fn run_watch_server(
+    watch_dir: PathBuf,
+    addr: SocketAddr,
+    task_selection: tasks::TaskSelection,
+) -> anyhow::Result<()> {
     let (events_tx, _) = broadcast::channel(512);
 
     spawn_fs_watcher(watch_dir.clone(), events_tx.clone())?;
 
-    let app_state = AppState { events: events_tx };
+    let task_state = tasks::TaskState::default();
+    if let Err(err) = tasks::refresh_task_state(&task_state, &task_selection).await {
+        eprintln!("{err}");
+    } else {
+        println!(
+            "loaded task '{}' from {}",
+            task_selection.name,
+            task_selection.dir.display()
+        );
+    }
+
+    spawn_task_reloader(
+        events_tx.clone(),
+        task_state.clone(),
+        task_selection.clone(),
+        watch_dir.clone(),
+    );
+
+    let app_state = AppState {
+        events: events_tx,
+        _task_state: task_state,
+    };
     let app = Router::new()
         .route("/", get(root))
         .route("/ws", get(ws_handler))
@@ -148,7 +174,7 @@ fn watch_loop(watch_dir: PathBuf, events: broadcast::Sender<String>) -> anyhow::
     Ok(())
 }
 
-fn relative_path(root: &Path, candidate: &Path) -> String {
+pub fn relative_path(root: &Path, candidate: &Path) -> String {
     candidate
         .strip_prefix(root)
         .unwrap_or(candidate)
@@ -166,4 +192,53 @@ fn now_millis() -> u128 {
 async fn shutdown_signal() {
     let _ = signal::ctrl_c().await;
     println!("Shutting down watch server");
+}
+
+fn spawn_task_reloader(
+    events: broadcast::Sender<String>,
+    task_state: tasks::TaskState,
+    task_selection: tasks::TaskSelection,
+    watch_root: PathBuf,
+) {
+    let mut rx = events.subscribe();
+    let tasks_path = task_selection.dir.join(tasks::TASKS_FILE_NAME);
+    let tasks_rel = relative_path(&watch_root, &tasks_path);
+    let tasks_rel_trimmed = tasks_rel.trim_start_matches("./").to_string();
+
+    tokio::spawn(async move {
+        while let Ok(payload) = rx.recv().await {
+            if tasks_file_touched(&payload, &tasks_rel, &tasks_rel_trimmed) {
+                match tasks::refresh_task_state(&task_state, &task_selection).await {
+                    Ok(_) => println!(
+                        "reloaded task '{}' from {}",
+                        task_selection.name,
+                        tasks_path.display()
+                    ),
+                    Err(err) => eprintln!("{err}"),
+                }
+            }
+        }
+    });
+}
+
+fn tasks_file_touched(payload: &str, rel_path: &str, rel_path_trimmed: &str) -> bool {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) {
+        if value.get("type").and_then(|t| t.as_str()) != Some("fs-event") {
+            return false;
+        }
+
+        if let Some(paths) = value.get("paths").and_then(|p| p.as_array()) {
+            for path in paths.iter().filter_map(|p| p.as_str()) {
+                let normalized = path.trim_start_matches("./");
+                if path == rel_path || normalized == rel_path_trimmed {
+                    return true;
+                }
+                if path.ends_with(tasks::TASKS_FILE_NAME) && normalized.ends_with(tasks::TASKS_FILE_NAME) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }

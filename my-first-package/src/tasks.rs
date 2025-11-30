@@ -4,10 +4,12 @@ use std::{
     hash::{Hash, Hasher},
     io,
     path::{Path, PathBuf},
+    sync::Arc,
     time::SystemTime,
 };
 
 use serde::Deserialize;
+use tokio::sync::RwLock;
 use toml::de::Error as TomlDeError;
 
 pub const TASKS_FILE_NAME: &str = "tasks.toml";
@@ -17,6 +19,12 @@ pub struct Task {
     pub cmd: String,
     pub watch: Vec<String>,
     pub persistent: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct TaskSelection {
+    pub dir: PathBuf,
+    pub name: String,
 }
 
 #[derive(Clone, Debug)]
@@ -40,6 +48,33 @@ impl TasksFile {
                 name: name.to_string(),
                 path: self.metadata.path.clone(),
             })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LoadedTask {
+    pub name: String,
+    pub dir: PathBuf,
+    pub task: Task,
+    pub metadata: TasksMetadata,
+}
+
+#[derive(Clone, Default)]
+pub struct TaskState {
+    inner: Arc<RwLock<Option<LoadedTask>>>,
+}
+
+impl TaskState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn get(&self) -> Option<LoadedTask> {
+        self.inner.read().await.clone()
+    }
+
+    pub async fn set(&self, value: Option<LoadedTask>) {
+        *self.inner.write().await = value;
     }
 }
 
@@ -194,6 +229,22 @@ fn hash_string(value: &str) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
+}
+
+pub async fn refresh_task_state(
+    task_state: &TaskState,
+    selection: &TaskSelection,
+) -> Result<(), TaskConfigError> {
+    let tasks_file = load_tasks_file(&selection.dir)?;
+    let task = tasks_file.task(&selection.name)?.clone();
+    let loaded = LoadedTask {
+        name: selection.name.clone(),
+        dir: selection.dir.clone(),
+        task,
+        metadata: tasks_file.metadata,
+    };
+    task_state.set(Some(loaded)).await;
+    Ok(())
 }
 
 #[cfg(test)]
