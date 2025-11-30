@@ -4,12 +4,12 @@ use std::{
     hash::{Hash, Hasher},
     io,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::SystemTime,
 };
 
 use serde::Deserialize;
-use tokio::sync::RwLock;
+use tokio::sync::broadcast;
 use toml::de::Error as TomlDeError;
 
 pub const TASKS_FILE_NAME: &str = "tasks.toml";
@@ -51,33 +51,6 @@ impl TasksFile {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct LoadedTask {
-    pub name: String,
-    pub dir: PathBuf,
-    pub task: Task,
-    pub metadata: TasksMetadata,
-}
-
-#[derive(Clone, Default)]
-pub struct TaskState {
-    inner: Arc<RwLock<Option<LoadedTask>>>,
-}
-
-impl TaskState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub async fn get(&self) -> Option<LoadedTask> {
-        self.inner.read().await.clone()
-    }
-
-    pub async fn set(&self, value: Option<LoadedTask>) {
-        *self.inner.write().await = value;
-    }
-}
-
 #[derive(Debug)]
 pub enum TaskConfigError {
     MissingFile { path: PathBuf },
@@ -91,7 +64,11 @@ impl std::fmt::Display for TaskConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskConfigError::MissingFile { path } => {
-                write!(f, "error- failed to resolve task: tasks.toml not found at {}", path.display())
+                write!(
+                    f,
+                    "error- failed to resolve task: tasks.toml not found at {}",
+                    path.display()
+                )
             }
             TaskConfigError::ReadFailed { path, source } => {
                 write!(
@@ -169,10 +146,11 @@ pub fn load_tasks_file(dir: &Path) -> Result<TasksFile, TaskConfigError> {
         }
     };
 
-    let raw: RawTasksFile = toml::from_str(&content).map_err(|source| TaskConfigError::ParseFailed {
-        path: path.clone(),
-        source,
-    })?;
+    let raw: RawTasksFile =
+        toml::from_str(&content).map_err(|source| TaskConfigError::ParseFailed {
+            path: path.clone(),
+            source,
+        })?;
 
     let mut tasks = HashMap::new();
     for (name, raw_task) in raw.tasks {
@@ -231,20 +209,141 @@ fn hash_string(value: &str) -> u64 {
     hasher.finish()
 }
 
-pub async fn refresh_task_state(
-    task_state: &TaskState,
-    selection: &TaskSelection,
-) -> Result<(), TaskConfigError> {
-    let tasks_file = load_tasks_file(&selection.dir)?;
-    let task = tasks_file.task(&selection.name)?.clone();
-    let loaded = LoadedTask {
-        name: selection.name.clone(),
-        dir: selection.dir.clone(),
-        task,
-        metadata: tasks_file.metadata,
-    };
-    task_state.set(Some(loaded)).await;
-    Ok(())
+fn hash_task(task: &Task) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    task.cmd.hash(&mut hasher);
+    task.watch.hash(&mut hasher);
+    task.persistent.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TaskEntry {
+    pub task: Task,
+    pub hash: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct TaskSnapshot {
+    pub version: u64,
+    pub(crate) tasks: HashMap<String, TaskEntry>,
+    pub metadata: Option<TasksMetadata>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TaskChanges {
+    pub changed: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ReloadEvent {
+    Reloaded { version: u64, changes: TaskChanges },
+    ReloadFailed { message: String },
+}
+
+#[derive(Clone)]
+pub struct TaskDb {
+    inner: Arc<RwLock<TaskDbInner>>,
+    reload_tx: broadcast::Sender<ReloadEvent>,
+    tasks_dir: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+struct TaskDbInner {
+    version: u64,
+    tasks: HashMap<String, TaskEntry>,
+    metadata: Option<TasksMetadata>,
+}
+
+impl TaskDb {
+    pub fn new(tasks_dir: PathBuf) -> Self {
+        let (reload_tx, _) = broadcast::channel(16);
+        TaskDb {
+            inner: Arc::new(RwLock::new(TaskDbInner {
+                version: 0,
+                tasks: HashMap::new(),
+                metadata: None,
+            })),
+            reload_tx,
+            tasks_dir,
+        }
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<ReloadEvent> {
+        self.reload_tx.subscribe()
+    }
+
+    pub fn reload(&self) -> Result<(), TaskConfigError> {
+        let tasks_file = match load_tasks_file(&self.tasks_dir) {
+            Ok(file) => file,
+            Err(err) => {
+                let _ = self
+                    .reload_tx
+                    .send(ReloadEvent::ReloadFailed { message: err.to_string() });
+                return Err(err);
+            }
+        };
+        let mut new_tasks = HashMap::new();
+        for (name, task) in tasks_file.tasks.iter() {
+            new_tasks.insert(
+                name.clone(),
+                TaskEntry {
+                    task: task.clone(),
+                    hash: hash_task(task),
+                },
+            );
+        }
+
+        let (version, changes) = {
+            let mut inner = self.inner.write().expect("task db poisoned");
+            let changes = diff_tasks(&inner.tasks, &new_tasks);
+            inner.tasks = new_tasks;
+            inner.metadata = Some(tasks_file.metadata);
+            inner.version = inner.version.saturating_add(1);
+            (inner.version, changes)
+        };
+
+        let _ = self
+            .reload_tx
+            .send(ReloadEvent::Reloaded { version, changes });
+        Ok(())
+    }
+
+    pub fn snapshot(&self) -> TaskSnapshot {
+        let inner = self.inner.read().expect("task db poisoned");
+        TaskSnapshot {
+            version: inner.version,
+            tasks: inner.tasks.clone(),
+            metadata: inner.metadata.clone(),
+        }
+    }
+
+    pub fn tasks_path(&self) -> PathBuf {
+        self.tasks_dir.join(TASKS_FILE_NAME)
+    }
+}
+
+fn diff_tasks(
+    old: &HashMap<String, TaskEntry>,
+    new: &HashMap<String, TaskEntry>,
+) -> TaskChanges {
+    let mut changed = Vec::new();
+    let mut removed = Vec::new();
+
+    for (name, new_entry) in new.iter() {
+        if !old.get(name).map(|o| o.hash == new_entry.hash).unwrap_or(false) {
+            changed.push(name.clone());
+        }
+    }
+
+    for name in old.keys() {
+        if !new.contains_key(name) {
+            removed.push(name.clone());
+        }
+    }
+
+    TaskChanges { changed, removed }
 }
 
 #[cfg(test)]
