@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     hash::{Hash, Hasher},
     io,
@@ -416,6 +416,126 @@ fn normalize_path(workspace_root: &Path, rel: &Path) -> PathBuf {
     }
 }
 
+fn resolve_dep(
+    workspace_root: &Path,
+    declaring_root: &Path,
+    target: &DepTarget,
+    on_reload: &OnReload,
+) -> Result<ResolvedDep, String> {
+    let (root, name) = match target {
+        DepTarget::Absolute { path, task } => (normalize_path(workspace_root, path), task.clone()),
+        DepTarget::Relative { path, task } => {
+            let root = match path {
+                Some(p) => declaring_root.join(p),
+                None => declaring_root.to_path_buf(),
+            };
+            (root, task.clone())
+        }
+    };
+
+    Ok(ResolvedDep {
+        target: TaskKey { root, name },
+        on_reload: on_reload.clone(),
+    })
+}
+
+fn recompute_hashes(inner: &mut HashMap<PathBuf, RootState>) -> Vec<TaskKey> {
+    let mut visiting: HashSet<TaskKey> = HashSet::new();
+    let mut done: HashMap<TaskKey, (u64, u64)> = HashMap::new();
+    let mut invalid = Vec::new();
+
+    let keys: Vec<TaskKey> = inner
+        .iter()
+        .flat_map(|(root, state)| state.tasks.keys().map(move |name| TaskKey {
+            root: root.clone(),
+            name: name.clone(),
+        }))
+        .collect();
+
+    for key in keys {
+        if compute_for_task(&key, inner, &mut visiting, &mut done).is_none() {
+            invalid.push(key);
+        }
+    }
+    invalid
+}
+
+fn compute_for_task(
+    key: &TaskKey,
+    inner: &mut HashMap<PathBuf, RootState>,
+    visiting: &mut HashSet<TaskKey>,
+    done: &mut HashMap<TaskKey, (u64, u64)>,
+) -> Option<(u64, u64)> {
+    if let Some(val) = done.get(key) {
+        return Some(*val);
+    }
+    if visiting.contains(key) {
+        mark_invalid(inner, key, "dependency cycle detected");
+        return None;
+    }
+
+    let (hash, deps, valid) = {
+        let Some(entry) = inner
+            .get(&key.root)
+            .and_then(|state| state.tasks.get(&key.name))
+        else {
+            return None;
+        };
+        (entry.hash, entry.deps.clone(), entry.valid)
+    };
+
+    if !valid {
+        return None;
+    }
+
+    visiting.insert(key.clone());
+    let mut eff_hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut rerun_hasher = std::collections::hash_map::DefaultHasher::new();
+
+    eff_hasher.write_u64(hash);
+    rerun_hasher.write_u64(hash);
+
+    for dep in deps.iter() {
+        let dep_key = &dep.target;
+        let dep_hashes = compute_for_task(dep_key, inner, visiting, done);
+        let Some((dep_eff, dep_rerun)) = dep_hashes else {
+            mark_invalid(
+                inner,
+                key,
+                &format!("unresolved dependency //{}:{}", dep_key.root.display(), dep_key.name),
+            );
+            visiting.remove(key);
+            return None;
+        };
+
+        eff_hasher.write_u64(dep_eff);
+        if dep.on_reload == OnReload::Reload {
+            rerun_hasher.write_u64(dep_rerun);
+        }
+    }
+
+    let eff = eff_hasher.finish();
+    let rerun = rerun_hasher.finish();
+    if let Some(state) = inner.get_mut(&key.root) {
+        if let Some(entry) = state.tasks.get_mut(&key.name) {
+            entry.effective_hash = Some(eff);
+            entry.rerun_hash = Some(rerun);
+        }
+    }
+    visiting.remove(key);
+    done.insert(key.clone(), (eff, rerun));
+    Some((eff, rerun))
+}
+
+fn mark_invalid(inner: &mut HashMap<PathBuf, RootState>, key: &TaskKey, msg: &str) {
+    if let Some(state) = inner.get_mut(&key.root) {
+        if let Some(entry) = state.tasks.get_mut(&key.name) {
+            entry.valid = false;
+            entry.error = Some(msg.to_string());
+        }
+    }
+}
+
 fn is_valid_name(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -435,9 +555,20 @@ fn is_valid_rel_path(path: &Path) -> bool {
 }
 
 #[derive(Clone, Debug)]
+pub struct ResolvedDep {
+    pub target: TaskKey,
+    pub on_reload: OnReload,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct TaskEntry {
     pub task: Task,
     pub hash: u64,
+    pub effective_hash: Option<u64>,
+    pub rerun_hash: Option<u64>,
+    pub deps: Vec<ResolvedDep>,
+    pub valid: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -453,9 +584,20 @@ pub struct TaskChanges {
     pub removed: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TaskKey {
+    pub root: PathBuf,
+    pub name: String,
+}
+
 #[derive(Clone, Debug)]
 pub enum ReloadEvent {
-    Reloaded { root: PathBuf, version: u64, changes: TaskChanges },
+    Reloaded {
+        root: PathBuf,
+        version: u64,
+        changes: TaskChanges,
+        invalid: Vec<TaskKey>,
+    },
     ReloadFailed { root: PathBuf, message: String },
 }
 
@@ -511,13 +653,28 @@ impl TaskDb {
         };
         let mut new_tasks = HashMap::new();
         for (name, task) in tasks_file.tasks.iter() {
-            new_tasks.insert(
-                name.clone(),
-                TaskEntry {
-                    task: task.clone(),
-                    hash: hash_task(task),
-                },
-            );
+            let mut entry = TaskEntry {
+                task: task.clone(),
+                hash: hash_task(task),
+                effective_hash: None,
+                rerun_hash: None,
+                deps: Vec::new(),
+                valid: true,
+                error: None,
+            };
+
+            for dep in &task.deps {
+                match resolve_dep(&self.workspace_root, &dir, &dep.target, &dep.on_reload) {
+                    Ok(resolved) => entry.deps.push(resolved),
+                    Err(reason) => {
+                        entry.valid = false;
+                        entry.error = Some(reason);
+                        break;
+                    }
+                }
+            }
+
+            new_tasks.insert(name.clone(), entry);
         }
 
         let (version, changes) = {
@@ -530,10 +687,16 @@ impl TaskDb {
             (state.version, changes)
         };
 
+        let invalid = {
+            let mut inner = self.inner.write().expect("task db poisoned");
+            recompute_hashes(&mut *inner)
+        };
+
         let _ = self.reload_tx.send(ReloadEvent::Reloaded {
             root: dir,
             version,
             changes,
+            invalid,
         });
         Ok(())
     }
@@ -565,7 +728,12 @@ fn diff_tasks(
     let mut removed = Vec::new();
 
     for (name, new_entry) in new.iter() {
-        if !old.get(name).map(|o| o.hash == new_entry.hash).unwrap_or(false) {
+        let new_hash = new_entry.effective_hash.unwrap_or(new_entry.hash);
+        let old_hash = old
+            .get(name)
+            .map(|o| o.effective_hash.unwrap_or(o.hash))
+            .unwrap_or(0);
+        if new_hash != old_hash {
             changed.push(name.clone());
         }
     }

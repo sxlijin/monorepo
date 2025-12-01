@@ -156,6 +156,7 @@ impl TaskScheduler {
                 root,
                 version,
                 changes,
+                ..
             } => {
                 if !self.root_tracked(&root) {
                     return;
