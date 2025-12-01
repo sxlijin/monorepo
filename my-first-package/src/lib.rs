@@ -38,7 +38,8 @@ pub async fn run_watch_server(
 
     spawn_fs_watcher(watch_dir.clone(), events_tx.clone())?;
 
-    let task_db = tasks::TaskDb::new();
+    let workspace_root = tasks::find_workspace_root(&watch_dir);
+    let task_db = tasks::TaskDb::new(workspace_root.clone());
     for selection in &task_selections {
         task_db.add_root(selection.dir.clone());
         let _ = task_db.reload_root(&selection.dir);

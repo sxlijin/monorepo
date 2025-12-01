@@ -13,12 +13,48 @@ use tokio::sync::broadcast;
 use toml::de::Error as TomlDeError;
 
 pub const TASKS_FILE_NAME: &str = "tasks.toml";
+pub const TASKS_WORKSPACE_FILE: &str = "tasks-workspace.toml";
+
+pub fn find_workspace_root(start: &Path) -> PathBuf {
+    let mut current = start;
+    loop {
+        let candidate = current.join(TASKS_WORKSPACE_FILE);
+        if candidate.exists() {
+            return current.to_path_buf();
+        }
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
+        }
+    }
+    start.to_path_buf()
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Task {
     pub cmd: String,
     pub watch: Vec<String>,
     pub persistent: bool,
+    pub deps: Vec<Dependency>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DepTarget {
+    Absolute { path: PathBuf, task: String },
+    Relative { path: Option<PathBuf>, task: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum OnReload {
+    Reload,
+    None,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Dependency {
+    pub raw: String,
+    pub target: DepTarget,
+    pub on_reload: OnReload,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -58,6 +94,7 @@ pub enum TaskConfigError {
     ParseFailed { path: PathBuf, source: TomlDeError },
     MissingTask { name: String, path: PathBuf },
     InvalidTask { name: String, path: PathBuf, reason: String },
+    InvalidDep { task: String, dep: String, path: PathBuf, reason: String },
 }
 
 impl std::fmt::Display for TaskConfigError {
@@ -103,6 +140,21 @@ impl std::fmt::Display for TaskConfigError {
                     reason
                 )
             }
+            TaskConfigError::InvalidDep {
+                task,
+                dep,
+                path,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "error- malformed tasks.toml at {} (task '{}' dep '{}'): {}",
+                    path.display(),
+                    task,
+                    dep,
+                    reason
+                )
+            }
         }
     }
 }
@@ -129,9 +181,10 @@ struct RawTask {
     cmd: Option<String>,
     watch: Option<Vec<String>>,
     persistent: Option<bool>,
+    deps: Option<Vec<String>>,
 }
 
-pub fn load_tasks_file(dir: &Path) -> Result<TasksFile, TaskConfigError> {
+pub fn load_tasks_file(dir: &Path, workspace_root: &Path) -> Result<TasksFile, TaskConfigError> {
     let path = dir.join(TASKS_FILE_NAME);
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
@@ -154,7 +207,7 @@ pub fn load_tasks_file(dir: &Path) -> Result<TasksFile, TaskConfigError> {
 
     let mut tasks = HashMap::new();
     for (name, raw_task) in raw.tasks {
-        let task = validate_task(&path, &name, raw_task)?;
+        let task = validate_task(workspace_root, &path, &name, raw_task)?;
         tasks.insert(name, task);
     }
 
@@ -169,7 +222,12 @@ pub fn load_tasks_file(dir: &Path) -> Result<TasksFile, TaskConfigError> {
     Ok(TasksFile { tasks, metadata })
 }
 
-fn validate_task(path: &Path, name: &str, raw: RawTask) -> Result<Task, TaskConfigError> {
+fn validate_task(
+    workspace_root: &Path,
+    path: &Path,
+    name: &str,
+    raw: RawTask,
+) -> Result<Task, TaskConfigError> {
     let cmd = raw.cmd.ok_or_else(|| TaskConfigError::InvalidTask {
         name: name.to_string(),
         path: path.to_path_buf(),
@@ -196,10 +254,18 @@ fn validate_task(path: &Path, name: &str, raw: RawTask) -> Result<Task, TaskConf
         reason: "missing field 'persistent'".to_string(),
     })?;
 
+    let deps_raw = raw.deps.unwrap_or_default();
+    let mut deps = Vec::new();
+    for dep_str in deps_raw {
+        let dep = parse_dependency(workspace_root, name, path, &dep_str)?;
+        deps.push(dep);
+    }
+
     Ok(Task {
         cmd,
         watch,
         persistent,
+        deps,
     })
 }
 
@@ -214,7 +280,158 @@ fn hash_task(task: &Task) -> u64 {
     task.cmd.hash(&mut hasher);
     task.watch.hash(&mut hasher);
     task.persistent.hash(&mut hasher);
+    for dep in &task.deps {
+        dep.raw.hash(&mut hasher);
+        dep.on_reload.hash(&mut hasher);
+        match &dep.target {
+            DepTarget::Absolute { path, task } => {
+                path.hash(&mut hasher);
+                task.hash(&mut hasher);
+            }
+            DepTarget::Relative { path, task } => {
+                path.hash(&mut hasher);
+                task.hash(&mut hasher);
+            }
+        }
+    }
     hasher.finish()
+}
+
+fn parse_dependency(
+    root: &Path,
+    task_name: &str,
+    path: &Path,
+    dep_str: &str,
+) -> Result<Dependency, TaskConfigError> {
+    let (base, on_reload) = match dep_str.split_once("?on_reload=") {
+        Some((lhs, rhs)) => {
+            let on_reload = match rhs {
+                "reload" => OnReload::Reload,
+                "none" => OnReload::None,
+                _ => {
+                    return Err(TaskConfigError::InvalidDep {
+                        task: task_name.to_string(),
+                        dep: dep_str.to_string(),
+                        path: path.to_path_buf(),
+                        reason: "invalid on_reload value (expected 'reload' or 'none')".into(),
+                    })
+                }
+            };
+            (lhs, on_reload)
+        }
+        None => (dep_str, OnReload::Reload),
+    };
+
+    let target = parse_dep_target(root, path, task_name, base)?;
+
+    Ok(Dependency {
+        raw: dep_str.to_string(),
+        target,
+        on_reload,
+    })
+}
+
+fn parse_dep_target(
+    root: &Path,
+    path: &Path,
+    task_name: &str,
+    dep: &str,
+) -> Result<DepTarget, TaskConfigError> {
+    if dep.is_empty() {
+        return Err(TaskConfigError::InvalidDep {
+            task: task_name.to_string(),
+            dep: dep.to_string(),
+            path: path.to_path_buf(),
+            reason: "empty dependency string".into(),
+        });
+    }
+
+    let (kind, rest) = if let Some(stripped) = dep.strip_prefix("//") {
+        ("abs", stripped)
+    } else {
+        ("rel", dep)
+    };
+
+    let (path_part, task_part) = match rest.rsplit_once(':') {
+        Some((p, t)) => (p, t),
+        None => {
+            return Err(TaskConfigError::InvalidDep {
+                task: task_name.to_string(),
+                dep: dep.to_string(),
+                path: path.to_path_buf(),
+                reason: "expected form //path:task or path:task or :task".into(),
+            })
+        }
+    };
+
+    if task_part.is_empty() || !is_valid_name(task_part) {
+        return Err(TaskConfigError::InvalidDep {
+            task: task_name.to_string(),
+            dep: dep.to_string(),
+            path: path.to_path_buf(),
+            reason: "invalid task name in dependency".into(),
+        });
+    }
+
+    let target = if kind == "abs" {
+        let p = if path_part.is_empty() {
+            PathBuf::from("/")
+        } else {
+            PathBuf::from(path_part)
+        };
+        DepTarget::Absolute {
+            path: normalize_path(root, &p),
+            task: task_part.to_string(),
+        }
+    } else {
+        let rel_path = if path_part.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(path_part))
+        };
+        if let Some(p) = &rel_path {
+            if !is_valid_rel_path(p) {
+                return Err(TaskConfigError::InvalidDep {
+                    task: task_name.to_string(),
+                    dep: dep.to_string(),
+                    path: path.to_path_buf(),
+                    reason: "invalid path segment in dependency".into(),
+                });
+            }
+        }
+        DepTarget::Relative {
+            path: rel_path,
+            task: task_part.to_string(),
+        }
+    };
+
+    Ok(target)
+}
+
+fn normalize_path(workspace_root: &Path, rel: &Path) -> PathBuf {
+    if rel.is_absolute() {
+        rel.to_path_buf()
+    } else {
+        workspace_root.join(rel)
+    }
+}
+
+fn is_valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn is_valid_rel_path(path: &Path) -> bool {
+    path.components().all(|c| match c {
+        std::path::Component::Normal(s) => {
+            s.to_string_lossy()
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        }
+        _ => false,
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -246,6 +463,7 @@ pub enum ReloadEvent {
 pub struct TaskDb {
     inner: Arc<RwLock<HashMap<PathBuf, RootState>>>,
     reload_tx: broadcast::Sender<ReloadEvent>,
+    workspace_root: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -256,11 +474,12 @@ struct RootState {
 }
 
 impl TaskDb {
-    pub fn new() -> Self {
+    pub fn new(workspace_root: PathBuf) -> Self {
         let (reload_tx, _) = broadcast::channel(32);
         TaskDb {
             inner: Arc::new(RwLock::new(HashMap::new())),
             reload_tx,
+            workspace_root,
         }
     }
 
@@ -280,7 +499,7 @@ impl TaskDb {
     pub fn reload_root(&self, dir: &Path) -> Result<(), TaskConfigError> {
         let dir = dir.to_path_buf();
         self.add_root(dir.clone());
-        let tasks_file = match load_tasks_file(&dir) {
+        let tasks_file = match load_tasks_file(&dir, &self.workspace_root) {
             Ok(file) => file,
             Err(err) => {
                 let _ = self.reload_tx.send(ReloadEvent::ReloadFailed {
@@ -331,6 +550,10 @@ impl TaskDb {
     pub fn roots(&self) -> Vec<PathBuf> {
         let inner = self.inner.read().expect("task db poisoned");
         inner.keys().cloned().collect()
+    }
+
+    pub fn workspace_root(&self) -> PathBuf {
+        self.workspace_root.clone()
     }
 }
 
@@ -385,7 +608,7 @@ persistent = false
         .unwrap();
         drop(file);
 
-        let tasks = load_tasks_file(dir.path()).expect("should load");
+        let tasks = load_tasks_file(dir.path(), dir.path()).expect("should load");
         assert_eq!(tasks.metadata.path, tasks_path);
         assert!(tasks.metadata.content_hash != 0);
         assert!(tasks.metadata.modified.is_some());
@@ -404,7 +627,7 @@ persistent = false
     #[test]
     fn missing_tasks_file_returns_error() {
         let dir = tempdir().unwrap();
-        let err = load_tasks_file(dir.path()).unwrap_err();
+        let err = load_tasks_file(dir.path(), dir.path()).unwrap_err();
         matches!(err, TaskConfigError::MissingFile { .. });
         assert!(format!("{err}").contains("error- failed to resolve task"));
     }
@@ -415,7 +638,7 @@ persistent = false
         let tasks_path = dir.path().join(TASKS_FILE_NAME);
         fs::write(&tasks_path, "[task1\ncmd = \"echo\"").unwrap();
 
-        let err = load_tasks_file(dir.path()).unwrap_err();
+        let err = load_tasks_file(dir.path(), dir.path()).unwrap_err();
         matches!(err, TaskConfigError::ParseFailed { .. });
         assert!(format!("{err}").contains("error- malformed tasks.toml"));
     }
@@ -434,7 +657,7 @@ persistent = true
         )
         .unwrap();
 
-        let err = load_tasks_file(dir.path()).unwrap_err();
+        let err = load_tasks_file(dir.path(), dir.path()).unwrap_err();
         matches!(err, TaskConfigError::InvalidTask { .. });
         assert!(format!("{err}").contains("missing field 'cmd'"));
     }
@@ -455,7 +678,7 @@ extra = "nope"
         )
         .unwrap();
 
-        let err = load_tasks_file(dir.path()).unwrap_err();
+        let err = load_tasks_file(dir.path(), dir.path()).unwrap_err();
         matches!(err, TaskConfigError::ParseFailed { .. });
         assert!(format!("{err}").contains("error- malformed tasks.toml"));
     }
@@ -475,9 +698,60 @@ persistent = true
         )
         .unwrap();
 
-        let tasks = load_tasks_file(dir.path()).unwrap();
+        let tasks = load_tasks_file(dir.path(), dir.path()).unwrap();
         let err = tasks.task("task2").unwrap_err();
         matches!(err, TaskConfigError::MissingTask { .. });
         assert!(format!("{err}").contains("task 'task2' not found"));
+    }
+
+    #[test]
+    fn parses_dependencies() {
+        let dir = tempdir().unwrap();
+        let tasks_path = dir.path().join(TASKS_FILE_NAME);
+        fs::write(
+            &tasks_path,
+            r#"
+[task1]
+cmd = "echo"
+watch = ["*.rs"]
+persistent = true
+deps = [
+    "//foo:bar",
+    "lib:build",
+    ":local",
+    "//baz:qux?on_reload=none"
+]
+"#,
+        )
+        .unwrap();
+
+        let tasks = load_tasks_file(dir.path(), dir.path()).unwrap();
+        let t = tasks.task("task1").unwrap();
+        assert_eq!(t.deps.len(), 4);
+        assert!(matches!(t.deps[0].target, DepTarget::Absolute { .. }));
+        assert_eq!(t.deps[0].on_reload, OnReload::Reload);
+        assert!(matches!(t.deps[1].target, DepTarget::Relative { .. }));
+        assert_eq!(t.deps[3].on_reload, OnReload::None);
+    }
+
+    #[test]
+    fn rejects_bad_dependency() {
+        let dir = tempdir().unwrap();
+        let tasks_path = dir.path().join(TASKS_FILE_NAME);
+        fs::write(
+            &tasks_path,
+            r#"
+[task1]
+cmd = "echo"
+watch = ["*.rs"]
+persistent = true
+deps = ["//bad dep"]
+"#,
+        )
+        .unwrap();
+
+        let err = load_tasks_file(dir.path(), dir.path()).unwrap_err();
+        matches!(err, TaskConfigError::InvalidDep { .. });
+        assert!(format!("{err}").contains("dep '"));
     }
 }
