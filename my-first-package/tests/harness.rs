@@ -21,19 +21,23 @@ impl Harness {
             .tempdir()
             .context("create temp dir")?;
         let dir = temp_dir.path().to_path_buf();
-        Ok(Self { _temp_dir: temp_dir, dir })
+        Ok(Self {
+            _temp_dir: temp_dir,
+            dir,
+        })
     }
 
     pub fn from_testdata(test_name: &str) -> Result<Self> {
         let harness = Self::new(test_name)?;
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata").join(test_name);
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("testdata")
+            .join(test_name);
         copy_dir_all(&root, &harness.dir)?;
         Ok(harness)
     }
 
     pub fn write_tasks(&self, contents: &str) -> Result<()> {
-        fs::write(self.dir.join(db::TASKS_FILE_NAME), contents)
-            .context("write tasks.toml")
+        fs::write(self.dir.join(db::TASKS_FILE_NAME), contents).context("write tasks.toml")
     }
 
     pub fn run_cli(&self, args: &str) -> Result<Command> {

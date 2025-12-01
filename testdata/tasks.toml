@@ -1,9 +1,12 @@
 [task1]
-cmd = "uv run python -c 'print(\"task1\")'"
+cmd = "uv run python -c 'print(\"task1\")' | tee task2.log"
 watch = ["*.py"]
-persistent = true
+persistent = false
+deps = [
+  ":task2",
+]
 
 [task2]
-cmd = "uv run python -c 'print(\"task2 rev2\")'"
+cmd = "uv run python -c 'print(\"task2 rev2\")' | tee task2.log"
 watch = ["*.py"]
 persistent = false

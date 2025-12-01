@@ -53,11 +53,14 @@ pub async fn run_watch_server(
     )
     .spawn();
 
-    spawn_task_reloader(events_tx.clone(), task_db.clone(), task_selections.clone(), watch_dir.clone());
+    spawn_task_reloader(
+        events_tx.clone(),
+        task_db.clone(),
+        task_selections.clone(),
+        watch_dir.clone(),
+    );
 
-    let app_state = AppState {
-        events: events_tx,
-    };
+    let app_state = AppState { events: events_tx };
     let app = Router::new()
         .route("/", get(root))
         .route("/ws", get(ws_handler))

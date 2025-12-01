@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use harness::Harness;
 use serial_test::serial;
 
@@ -189,6 +189,89 @@ persistent = true
         Ok(fs::read_to_string(&bar_log)
             .unwrap_or_default()
             .contains("bar2"))
+    })?;
+
+    let _ = child.kill();
+    let _ = child.wait();
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn on_reload_none_skips_downstream_on_upstream_change() -> Result<()> {
+    if !port_available() {
+        eprintln!("skipping test: port 8080 unavailable");
+        return Ok(());
+    }
+
+    let harness = Harness::new("on_reload_none")?;
+    harness.write_tasks(
+        r#"
+[up]
+cmd = "echo up >> up.log"
+watch = ["up.txt"]
+persistent = true
+
+[down]
+cmd = "echo down >> down.log"
+watch = ["down.txt"]
+persistent = false
+deps = ["//:up?on_reload=none"]
+"#,
+    )?;
+
+    let mut child = harness.spawn_watch(":down")?;
+    let up_log = harness.dir.join("up.log");
+    let down_log = harness.dir.join("down.log");
+
+    // Trigger downstream directly -> both should run (up as dep, down direct).
+    fs::write(harness.dir.join("down.txt"), "one")?;
+    wait_for_condition(Duration::from_secs(6), || Ok(down_log.exists()))?;
+    wait_for_condition(Duration::from_secs(6), || Ok(up_log.exists()))?;
+    let down_lines = line_count(&down_log);
+
+    // Change upstream file; up should rerun, down should not (on_reload=none).
+    fs::write(harness.dir.join("up.txt"), "two")?;
+    wait_for_condition(Duration::from_secs(6), || Ok(line_count(&up_log) >= 2))?;
+    assert_eq!(line_count(&down_log), down_lines);
+
+    let _ = child.kill();
+    let _ = child.wait();
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn initial_run_executes_tasks_once() -> Result<()> {
+    if !port_available() {
+        eprintln!("skipping test: port 8080 unavailable");
+        return Ok(());
+    }
+
+    let harness = Harness::new("initial_run")?;
+    harness.write_tasks(
+        r#"
+[root]
+cmd = "echo root >> root.log"
+watch = ["*.py"]
+persistent = false
+deps = [
+  ":child"
+]
+
+[child]
+cmd = "echo child >> child.log"
+watch = ["*.py"]
+persistent = false
+"#,
+    )?;
+
+    let mut child = harness.spawn_watch(":root")?;
+    let root_log = harness.dir.join("root.log");
+    let child_log = harness.dir.join("child.log");
+
+    wait_for_condition(Duration::from_secs(6), || {
+        Ok(root_log.exists() && child_log.exists())
     })?;
 
     let _ = child.kill();

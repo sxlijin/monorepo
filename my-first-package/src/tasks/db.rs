@@ -89,12 +89,32 @@ impl TasksFile {
 
 #[derive(Debug)]
 pub enum TaskConfigError {
-    MissingFile { path: PathBuf },
-    ReadFailed { path: PathBuf, source: io::Error },
-    ParseFailed { path: PathBuf, source: TomlDeError },
-    MissingTask { name: String, path: PathBuf },
-    InvalidTask { name: String, path: PathBuf, reason: String },
-    InvalidDep { task: String, dep: String, path: PathBuf, reason: String },
+    MissingFile {
+        path: PathBuf,
+    },
+    ReadFailed {
+        path: PathBuf,
+        source: io::Error,
+    },
+    ParseFailed {
+        path: PathBuf,
+        source: TomlDeError,
+    },
+    MissingTask {
+        name: String,
+        path: PathBuf,
+    },
+    InvalidTask {
+        name: String,
+        path: PathBuf,
+        reason: String,
+    },
+    InvalidDep {
+        task: String,
+        dep: String,
+        path: PathBuf,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for TaskConfigError {
@@ -192,10 +212,7 @@ pub fn load_tasks_file(dir: &Path, workspace_root: &Path) -> Result<TasksFile, T
             return Err(TaskConfigError::MissingFile { path });
         }
         Err(err) => {
-            return Err(TaskConfigError::ReadFailed {
-                path,
-                source: err,
-            });
+            return Err(TaskConfigError::ReadFailed { path, source: err });
         }
     };
 
@@ -314,7 +331,7 @@ fn parse_dependency(
                         dep: dep_str.to_string(),
                         path: path.to_path_buf(),
                         reason: "invalid on_reload value (expected 'reload' or 'none')".into(),
-                    })
+                    });
                 }
             };
             (lhs, on_reload)
@@ -360,7 +377,7 @@ fn parse_dep_target(
                 dep: dep.to_string(),
                 path: path.to_path_buf(),
                 reason: "expected form //path:task or path:task or :task".into(),
-            })
+            });
         }
     };
 
@@ -446,10 +463,12 @@ fn recompute_hashes(inner: &mut HashMap<PathBuf, RootState>) -> Vec<TaskKey> {
 
     let keys: Vec<TaskKey> = inner
         .iter()
-        .flat_map(|(root, state)| state.tasks.keys().map(move |name| TaskKey {
-            root: root.clone(),
-            name: name.clone(),
-        }))
+        .flat_map(|(root, state)| {
+            state.tasks.keys().map(move |name| TaskKey {
+                root: root.clone(),
+                name: name.clone(),
+            })
+        })
         .collect();
 
     for key in keys {
@@ -502,7 +521,11 @@ fn compute_for_task(
             mark_invalid(
                 inner,
                 key,
-                &format!("unresolved dependency //{}:{}", dep_key.root.display(), dep_key.name),
+                &format!(
+                    "unresolved dependency //{}:{}",
+                    dep_key.root.display(),
+                    dep_key.name
+                ),
             );
             visiting.remove(key);
             return None;
@@ -545,11 +568,10 @@ fn is_valid_name(name: &str) -> bool {
 
 fn is_valid_rel_path(path: &Path) -> bool {
     path.components().all(|c| match c {
-        std::path::Component::Normal(s) => {
-            s.to_string_lossy()
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-        }
+        std::path::Component::Normal(s) => s
+            .to_string_lossy()
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'),
         _ => false,
     })
 }
@@ -598,7 +620,10 @@ pub enum ReloadEvent {
         changes: TaskChanges,
         invalid: Vec<TaskKey>,
     },
-    ReloadFailed { root: PathBuf, message: String },
+    ReloadFailed {
+        root: PathBuf,
+        message: String,
+    },
 }
 
 #[derive(Clone)]
@@ -720,10 +745,7 @@ impl TaskDb {
     }
 }
 
-fn diff_tasks(
-    old: &HashMap<String, TaskEntry>,
-    new: &HashMap<String, TaskEntry>,
-) -> TaskChanges {
+fn diff_tasks(old: &HashMap<String, TaskEntry>, new: &HashMap<String, TaskEntry>) -> TaskChanges {
     let mut changed = Vec::new();
     let mut removed = Vec::new();
 

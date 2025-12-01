@@ -2,7 +2,7 @@ use std::{env, net::SocketAddr, path::PathBuf};
 
 use my_first_package::{
     run_watch_server,
-    tasks::{TaskSelection, TASKS_FILE_NAME},
+    tasks::{TASKS_FILE_NAME, TaskSelection},
 };
 
 #[tokio::main]
