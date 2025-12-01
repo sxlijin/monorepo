@@ -39,7 +39,7 @@ struct TaskRuntime {
     valid: bool,
     persistent: bool,
     rerun_hash: u64,
-    effective_hash: u64,
+    _effective_hash: u64,
 }
 
 #[derive(Clone)]
@@ -138,7 +138,7 @@ impl TaskScheduler {
                     valid: entry.valid,
                     persistent: entry.task.persistent,
                     rerun_hash: entry.rerun_hash.unwrap_or(entry.hash),
-                    effective_hash: entry.effective_hash.unwrap_or(entry.hash),
+                    _effective_hash: entry.effective_hash.unwrap_or(entry.hash),
                 };
 
                 for dep in entry.deps.iter() {
@@ -167,6 +167,26 @@ impl TaskScheduler {
                 edge.upstream_persistent = upstream_persistent;
             }
         }
+
+        let allowed = restrict_to_selections(&self.selections, &tasks);
+        let tasks: HashMap<TaskKey, TaskRuntime> = tasks
+            .into_iter()
+            .filter(|(k, _)| allowed.contains(k))
+            .collect();
+        let dependents: HashMap<TaskKey, Vec<DepEdge>> = dependents
+            .into_iter()
+            .filter_map(|(k, edges)| {
+                if allowed.contains(&k) {
+                    let filtered: Vec<DepEdge> = edges
+                        .into_iter()
+                        .filter(|e| allowed.contains(&e.to))
+                        .collect();
+                    Some((k, filtered))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         let topo_order = topo_sort(&tasks);
 
@@ -295,7 +315,12 @@ impl TaskScheduler {
                 }
             }
 
-            self.start_task(&key, &format!("{reason}")).await;
+            let why = if is_direct {
+                format!("{reason} (direct)")
+            } else {
+                format!("{reason} (dependent)")
+            };
+            self.start_task(&key, &why).await;
         }
     }
 
@@ -449,6 +474,43 @@ fn collect_closure(
             }
         }
     }
+}
+
+fn restrict_to_selections(
+    selections: &[TaskSelection],
+    tasks: &HashMap<TaskKey, TaskRuntime>,
+) -> HashSet<TaskKey> {
+    let mut allowed = HashSet::new();
+    let mut stack = Vec::new();
+
+    for sel in selections {
+        let key = TaskKey {
+            root: sel.dir.clone(),
+            name: sel.name.clone(),
+        };
+        if !tasks.contains_key(&key) {
+            eprintln!(
+                "error- failed to resolve task: task '{}' not found in {}",
+                sel.name,
+                sel.dir.display()
+            );
+            continue;
+        }
+        stack.push(key);
+    }
+
+    while let Some(key) = stack.pop() {
+        if !allowed.insert(key.clone()) {
+            continue;
+        }
+        if let Some(task) = tasks.get(&key) {
+            for dep in task.deps.iter() {
+                stack.push(dep.target.clone());
+            }
+        }
+    }
+
+    allowed
 }
 
 fn build_globset(patterns: &[String]) -> Result<GlobSet, globset::Error> {

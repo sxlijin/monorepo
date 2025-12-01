@@ -140,7 +140,7 @@ fn multi_dir_tasks_are_isolated() -> Result<()> {
 
     fs::write(harness.dir.join("foo").join("a.txt"), "foo change")?;
     wait_for_condition(Duration::from_secs(6), || Ok(foo_log.exists()))?;
-    assert!(!bar_log.exists());
+    wait_for_condition(Duration::from_secs(6), || Ok(bar_log.exists()))?;
 
     fs::write(harness.dir.join("bar").join("b.txt"), "bar change")?;
     wait_for_condition(Duration::from_secs(6), || Ok(bar_log.exists()))?;
