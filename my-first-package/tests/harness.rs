@@ -14,6 +14,10 @@ pub struct Harness {
     pub dir: PathBuf,
 }
 
+pub struct ChildGuard {
+    pub child: Child,
+}
+
 impl Harness {
     pub fn new(test_name: &str) -> Result<Self> {
         let temp_dir = tempfile::Builder::new()
@@ -53,6 +57,11 @@ impl Harness {
         let mut cmd = self.run_cli(args)?;
         cmd.spawn().context("spawn watch")
     }
+
+    pub fn spawn_watch_guard(&self, args: &str) -> Result<ChildGuard> {
+        let child = self.spawn_watch(args)?;
+        Ok(ChildGuard { child })
+    }
 }
 
 fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> Result<()> {
@@ -72,4 +81,11 @@ fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> Result<()> {
         }
     }
     Ok(())
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }

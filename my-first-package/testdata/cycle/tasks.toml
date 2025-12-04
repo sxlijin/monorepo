@@ -1,0 +1,11 @@
+[a]
+cmd = "echo a >> a.log"
+watch = ["*.txt"]
+persistent = false
+deps = [":b"]
+
+[b]
+cmd = "echo b >> b.log"
+watch = ["*.txt"]
+persistent = false
+deps = [":a"]

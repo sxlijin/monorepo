@@ -1,0 +1,10 @@
+[bad]
+cmd = "echo bad >> bad.log"
+watch = ["*.txt"]
+persistent = false
+deps = ["//missing:task"]
+
+[good]
+cmd = "echo good >> good.log"
+watch = ["*.txt"]
+persistent = false

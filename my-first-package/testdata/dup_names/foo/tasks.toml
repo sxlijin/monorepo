@@ -1,0 +1,4 @@
+[common]
+cmd = "echo foo-common >> foo.log"
+watch = ["*.txt"]
+persistent = false

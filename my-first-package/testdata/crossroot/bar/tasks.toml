@@ -1,0 +1,4 @@
+[bar]
+cmd = "echo bar-run >> bar.log"
+watch = ["*.txt"]
+persistent = false

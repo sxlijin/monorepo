@@ -1,0 +1,27 @@
+[p1]
+cmd = "echo p1 >> p1.log"
+watch = ["p1.txt"]
+persistent = true
+
+[p2]
+cmd = "echo p2 >> p2.log"
+watch = ["p2.txt"]
+persistent = true
+deps = [":p1?on_reload=none"]
+
+[a]
+cmd = "echo a >> a.log"
+watch = ["a.txt"]
+persistent = false
+
+[b]
+cmd = "echo b >> b.log"
+watch = ["b.txt"]
+persistent = false
+deps = [":a"]
+
+[c]
+cmd = "echo c >> c.log"
+watch = ["c.txt"]
+persistent = false
+deps = [":b?on_reload=none"]

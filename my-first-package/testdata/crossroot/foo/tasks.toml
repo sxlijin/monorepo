@@ -1,0 +1,5 @@
+[foo]
+cmd = "echo foo-run >> foo.log"
+watch = ["*.txt"]
+persistent = false
+deps = ["//bar:bar"]

@@ -30,6 +30,7 @@ pub struct TaskScheduler {
     last_run_rerun: HashMap<TaskKey, u64>,
     first_run: bool,
     task_states: HashMap<TaskKey, TaskStatus>,
+    invalid_roots: HashSet<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -98,6 +99,7 @@ impl TaskScheduler {
             last_run_rerun: HashMap::new(),
             first_run: true,
             task_states: HashMap::new(),
+            invalid_roots: HashSet::new(),
         }
     }
 
@@ -265,12 +267,14 @@ impl TaskScheduler {
             ReloadEvent::ReloadFailed { root, message } => {
                 if self.root_tracked(&root) {
                     eprintln!("{message}");
+                    self.invalid_roots.insert(root.clone());
                 }
             }
             ReloadEvent::Reloaded { root, version, .. } => {
                 if !self.root_tracked(&root) {
                     return;
                 }
+                self.invalid_roots.remove(&root);
                 let prev_version = self.root_versions.get(&root).cloned().unwrap_or(0);
                 if version <= prev_version {
                     return;
@@ -289,6 +293,9 @@ impl TaskScheduler {
         for path_str in paths {
             let full_path = self.watch_root.join(&path_str);
             for (key, task) in self.tasks.iter() {
+                if self.invalid_roots.contains(&key.root) {
+                    continue;
+                }
                 if let Ok(rel) = full_path.strip_prefix(&key.root) {
                     let rel_str = rel.to_string_lossy();
                     if task.globset.is_match(rel_str.as_ref()) {
@@ -433,6 +440,17 @@ impl TaskScheduler {
                     );
                     continue;
                 };
+                if self.invalid_roots.contains(&key.root) {
+                    self.finish_task(
+                        &key,
+                        TaskStatus::Invalid,
+                        &mut indegree,
+                        &adj,
+                        &mut ready,
+                        &mut blocked_by_error,
+                    );
+                    continue;
+                }
 
                 if !task.valid {
                     eprintln!(
@@ -769,6 +787,49 @@ fn collect_closure(
                 stack.push(edge.to.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tasks::db::TaskDb;
+    use crate::tasks::TaskChanges;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn ignores_stale_reload_versions() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let workspace_root = root.clone();
+        let task_db = TaskDb::new(workspace_root);
+        task_db.add_root(root.clone());
+        let (tx, fs_rx) = broadcast::channel(4);
+        drop(tx);
+        let selections = vec![TaskSelection {
+            dir: root.clone(),
+            name: "fake".into(),
+        }];
+        let mut scheduler = TaskScheduler::new(selections, task_db, root.clone(), fs_rx);
+        scheduler.root_versions.insert(root.clone(), 2);
+
+        scheduler
+            .handle_reload_event(ReloadEvent::Reloaded {
+                root: root.clone(),
+                version: 1,
+                changes: TaskChanges {
+                    changed: vec![],
+                    removed: vec![],
+                },
+                invalid: vec![],
+            })
+            .await;
+
+        assert_eq!(
+            scheduler.root_versions.get(&root).cloned(),
+            Some(2),
+            "stale reload should be ignored"
+        );
     }
 }
 

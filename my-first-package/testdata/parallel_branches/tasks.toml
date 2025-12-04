@@ -1,0 +1,9 @@
+[a]
+cmd = "echo a >> a.log && sleep 0.6 && echo a-done >> a.log"
+watch = ["a.txt"]
+persistent = false
+
+[b]
+cmd = "echo b >> b.log && sleep 0.6 && echo b-done >> b.log"
+watch = ["b.txt"]
+persistent = false

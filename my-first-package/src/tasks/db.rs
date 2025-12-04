@@ -516,6 +516,25 @@ fn compute_for_task(
 
     for dep in deps.iter() {
         let dep_key = &dep.target;
+        if let Some(entry) = inner
+            .get(&key.root)
+            .and_then(|state| state.tasks.get(&key.name))
+        {
+            let dep_persistent = inner
+                .get(&dep_key.root)
+                .and_then(|state| state.tasks.get(&dep_key.name))
+                .map(|e| e.task.persistent)
+                .unwrap_or(false);
+            if dep_persistent && !entry.task.persistent {
+                mark_invalid(
+                    inner,
+                    key,
+                    "non-persistent task cannot depend on persistent task",
+                );
+                visiting.remove(key);
+                return None;
+            }
+        }
         let dep_hashes = compute_for_task(dep_key, inner, visiting, done);
         let Some((dep_eff, dep_rerun)) = dep_hashes else {
             mark_invalid(
