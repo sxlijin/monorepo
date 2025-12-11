@@ -2,14 +2,11 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import SwiftData
 import SwiftUI
-import UIKit
 
 struct BarcodeDetailView: View {
     let barcode: SavedBarcode
-    @State private var previousBrightness: CGFloat?
     @State private var showingEditSheet = false
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -79,13 +76,6 @@ struct BarcodeDetailView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .onAppear { captureAndBoostBrightness() }
-        .onChange(of: scenePhase) { phase in
-            if phase != .active {
-                restoreBrightnessIfNeeded()
-            }
-        }
-        .onDisappear { restoreBrightnessIfNeeded() }
     }
 
     private func barcodeImage(for value: String) -> Image? {
@@ -103,19 +93,5 @@ struct BarcodeDetailView: View {
         }
 
         return Image(decorative: cgImage, scale: 1, orientation: .up)
-    }
-
-    private func captureAndBoostBrightness() {
-        if previousBrightness == nil {
-            previousBrightness = UIScreen.main.brightness
-        }
-        UIScreen.main.brightness = 1.0
-    }
-
-    private func restoreBrightnessIfNeeded() {
-        if let previousBrightness {
-            UIScreen.main.brightness = previousBrightness
-            self.previousBrightness = nil
-        }
     }
 }

@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct HomepageView: View {
+    @Binding var selectedBarcodeID: PersistentIdentifier?
     @Query(sort: \SavedBarcode.createdAt, order: .reverse) private var barcodes: [SavedBarcode]
     @State private var showingAddSheet = false
 
@@ -16,7 +17,10 @@ struct HomepageView: View {
                 .padding(.horizontal)
             } else {
                 List(barcodes) { barcode in
-                    NavigationLink {
+                    NavigationLink(
+                        tag: barcode.persistentModelID,
+                        selection: $selectedBarcodeID
+                    ) {
                         BarcodeDetailView(barcode: barcode)
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
