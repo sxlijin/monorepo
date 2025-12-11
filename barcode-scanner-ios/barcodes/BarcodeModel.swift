@@ -13,10 +13,12 @@ final class SavedBarcode {
     var title: String
     var payload: String
     var createdAt: Date
+    var lastUpdated: Date
 
-    init(title: String, payload: String, createdAt: Date = .init()) {
+    init(title: String, payload: String, createdAt: Date = .init(), lastUpdated: Date = .init()) {
         self.title = title
         self.payload = payload
         self.createdAt = createdAt
+        self.lastUpdated = lastUpdated
     }
 }
