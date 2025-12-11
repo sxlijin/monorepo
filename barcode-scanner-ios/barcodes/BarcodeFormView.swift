@@ -16,6 +16,7 @@ struct BarcodeFormView: View {
     var onDelete: (() -> Void)? = nil
     var createdAt: Date? = nil
     var lastUpdated: Date? = nil
+    var includeInlineSaveButton: Bool = true
 
     @State private var showingScanner = false
     @State private var scannerUnavailableMessage: String?
@@ -59,11 +60,13 @@ struct BarcodeFormView: View {
                 Text("Uses the camera to detect barcodes and fill the value.")
             }
 
-            Section {
-                Button(saveButtonTitle) {
-                    onSave()
+            if includeInlineSaveButton {
+                Section {
+                    Button(saveButtonTitle) {
+                        onSave()
+                    }
+                    .disabled(isSaveDisabled)
                 }
-                .disabled(isSaveDisabled)
             }
 
             if mode == .edit, let onDelete {

@@ -33,12 +33,19 @@ struct EditBarcodeView: View {
             onSave: saveChanges,
             onDelete: deleteBarcode,
             createdAt: barcode.createdAt,
-            lastUpdated: barcode.lastUpdated
+            lastUpdated: barcode.lastUpdated,
+            includeInlineSaveButton: false
         )
         .navigationTitle("Edit barcode")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { attemptDismiss() }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Save") {
+                    saveChanges()
+                }
+                .disabled(isSaveDisabled)
             }
         }
         .interactiveDismissDisabled(hasUnsavedChanges)
@@ -59,6 +66,10 @@ struct EditBarcodeView: View {
         barcode.payload = trimmedPayload
         barcode.lastUpdated = Date()
         dismiss()
+    }
+
+    private var isSaveDisabled: Bool {
+        payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func attemptDismiss() {

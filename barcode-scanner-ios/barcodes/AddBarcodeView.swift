@@ -13,14 +13,25 @@ struct AddBarcodeView: View {
             title: $title,
             payload: $payload,
             mode: .add,
-            onSave: saveBarcode
+            onSave: saveBarcode,
+            includeInlineSaveButton: false
         )
         .navigationTitle("Add barcode")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
             }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Save") {
+                    saveBarcode()
+                }
+                .disabled(isSaveDisabled)
+            }
         }
+    }
+
+    private var isSaveDisabled: Bool {
+        payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func saveBarcode() {
