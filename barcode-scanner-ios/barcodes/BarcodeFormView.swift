@@ -14,6 +14,8 @@ struct BarcodeFormView: View {
     var mode: Mode
     var onSave: () -> Void
     var onDelete: (() -> Void)? = nil
+    var createdAt: Date? = nil
+    var lastUpdated: Date? = nil
 
     @State private var showingScanner = false
     @State private var scannerUnavailableMessage: String?
@@ -25,6 +27,13 @@ struct BarcodeFormView: View {
     private var saveButtonTitle: String {
         mode == .add ? "Save" : "Save changes"
     }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     var body: some View {
         Form {
@@ -61,6 +70,19 @@ struct BarcodeFormView: View {
                 Section {
                     Button("Delete barcode", role: .destructive) {
                         onDelete()
+                    }
+                }
+            }
+
+            if mode == .edit, let createdAt, let lastUpdated {
+                Section("Metadata") {
+                    LabeledContent("Created") {
+                        Text(BarcodeFormView.dateFormatter.string(from: createdAt))
+                            .foregroundStyle(.secondary)
+                    }
+                    LabeledContent("Modified") {
+                        Text(BarcodeFormView.dateFormatter.string(from: lastUpdated))
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

@@ -9,6 +9,10 @@ struct EditBarcodeView: View {
 
     @State private var title: String
     @State private var payload: String
+    @State private var showingDiscardAlert = false
+
+    private let originalTitle: String
+    private let originalPayload: String
 
     var onDelete: () -> Void = {}
 
@@ -16,6 +20,8 @@ struct EditBarcodeView: View {
         self._barcode = Bindable(wrappedValue: barcode)
         self._title = State(initialValue: barcode.title)
         self._payload = State(initialValue: barcode.payload)
+        self.originalTitle = barcode.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.originalPayload = barcode.payload.trimmingCharacters(in: .whitespacesAndNewlines)
         self.onDelete = onDelete
     }
 
@@ -25,13 +31,31 @@ struct EditBarcodeView: View {
             payload: $payload,
             mode: .edit,
             onSave: saveChanges,
-            onDelete: deleteBarcode
+            onDelete: deleteBarcode,
+            createdAt: barcode.createdAt,
+            lastUpdated: barcode.lastUpdated
         )
         .navigationTitle("Edit barcode")
+        .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    attemptDismiss()
+                } label: {
+                    Label("Back", systemImage: "chevron.backward")
+                }
             }
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { attemptDismiss() }
+            }
+        }
+        .alert("Discard changes?", isPresented: $showingDiscardAlert) {
+            Button("Keep Editing", role: .cancel) {}
+            Button("Discard", role: .destructive) {
+                dismiss()
+            }
+        } message: {
+            Text("You have unsaved changes.")
         }
     }
 
@@ -42,6 +66,19 @@ struct EditBarcodeView: View {
         barcode.payload = trimmedPayload
         barcode.lastUpdated = Date()
         dismiss()
+    }
+
+    private func attemptDismiss() {
+        if hasUnsavedChanges {
+            showingDiscardAlert = true
+        } else {
+            dismiss()
+        }
+    }
+
+    private var hasUnsavedChanges: Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines) != originalTitle ||
+        payload.trimmingCharacters(in: .whitespacesAndNewlines) != originalPayload
     }
 
     private func deleteBarcode() {
