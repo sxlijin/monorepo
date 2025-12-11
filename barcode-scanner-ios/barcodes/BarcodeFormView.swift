@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Vision
 import VisionKit
 
@@ -127,6 +128,10 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
     var onCapture: (String) -> Void
     var onError: (Error) -> Void
 
+    private let topMaskTag = 9001
+    private let bottomMaskTag = 9002
+    private static let middleScanRegion = CGRect(x: 0, y: 1.0 / 3.0, width: 1.0, height: 1.0 / 3.0)
+
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
@@ -148,10 +153,12 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
             isHighlightingEnabled: true
         )
         controller.delegate = context.coordinator
+        configureMaskOverlays(for: controller)
         return controller
     }
 
     func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {
+        configureMaskOverlays(for: uiViewController)
         guard !context.coordinator.isScanning else { return }
         do {
             try uiViewController.startScanning()
@@ -159,6 +166,33 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
         } catch {
             onError(error)
         }
+    }
+
+    private func configureMaskOverlays(for controller: DataScannerViewController) {
+        let container = controller.overlayContainerView
+        addMaskIfNeeded(to: container, tag: topMaskTag, anchorToTop: true)
+        addMaskIfNeeded(to: container, tag: bottomMaskTag, anchorToTop: false)
+    }
+
+    private func addMaskIfNeeded(to container: UIView, tag: Int, anchorToTop: Bool) {
+        guard container.viewWithTag(tag) == nil else { return }
+        let maskView = UIView()
+        maskView.tag = tag
+        maskView.isUserInteractionEnabled = false
+        maskView.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+        maskView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(maskView)
+
+        let verticalConstraint = anchorToTop
+            ? maskView.topAnchor.constraint(equalTo: container.topAnchor)
+            : maskView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+
+        NSLayoutConstraint.activate([
+            verticalConstraint,
+            maskView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            maskView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            maskView.heightAnchor.constraint(equalTo: container.heightAnchor, multiplier: 1.0 / 3.0)
+        ])
     }
 
     final class Coordinator: NSObject, DataScannerViewControllerDelegate {
@@ -195,11 +229,19 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
 
         private func extractedPayload(from items: [RecognizedItem]) -> String? {
             for item in items {
-                if case let .barcode(barcode) = item, let value = barcode.payloadStringValue {
+                if case let .barcode(barcode) = item,
+                   isWithinScanRegion(barcode.observation.boundingBox),
+                   let value = barcode.payloadStringValue {
                     return value
                 }
             }
             return nil
+        }
+
+        private func isWithinScanRegion(_ boundingBox: CGRect) -> Bool {
+            guard boundingBox.width > 0, boundingBox.height > 0 else { return false }
+            let centerPoint = CGPoint(x: boundingBox.midX, y: boundingBox.midY)
+            return BarcodeScannerView.middleScanRegion.contains(centerPoint)
         }
     }
 }
