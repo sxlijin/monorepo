@@ -5,6 +5,7 @@
 //  Created by Sam on 12/10/25.
 //
 
+import SwiftData
 import SwiftUI
 
 @main
@@ -13,5 +14,6 @@ struct barcodesApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: SavedBarcode.self)
     }
 }
