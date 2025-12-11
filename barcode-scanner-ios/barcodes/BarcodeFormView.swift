@@ -96,9 +96,6 @@ struct BarcodeFormView: View {
         .sheet(isPresented: $showingScanner) {
             BarcodeScannerView { value in
                 payload = value
-                if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    title = "Barcode"
-                }
                 showingScanner = false
             } onError: { error in
                 scannerUnavailableMessage = error.localizedDescription
