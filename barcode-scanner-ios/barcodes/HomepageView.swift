@@ -21,9 +21,6 @@ struct HomepageView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(barcode.title.isEmpty ? "Untitled" : barcode.title)
                                 .font(.headline)
-                            Text(barcode.payload)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
                             Text(barcode.createdAt, format: .dateTime)
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
@@ -43,43 +40,5 @@ struct HomepageView: View {
                 }
             }
         }
-    }
-}
-
-private struct BarcodeDetailView: View {
-    let barcode: SavedBarcode
-
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(barcode.title.isEmpty ? "Untitled" : barcode.title)
-                .font(.largeTitle)
-                .bold()
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Value")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(barcode.payload)
-                    .font(.title3.monospaced())
-                    .textSelection(.enabled)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Created")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(BarcodeDetailView.dateFormatter.string(from: barcode.createdAt))
-                    .font(.subheadline)
-            }
-            Spacer()
-        }
-        .padding()
-        .navigationTitle("Barcode")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
