@@ -16,6 +16,11 @@ struct AddBarcodeView: View {
             onSave: saveBarcode
         )
         .navigationTitle("Add barcode")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+        }
     }
 
     private func saveBarcode() {

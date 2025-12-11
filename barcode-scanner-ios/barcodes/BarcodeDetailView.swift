@@ -7,6 +7,7 @@ import UIKit
 struct BarcodeDetailView: View {
     let barcode: SavedBarcode
     @State private var previousBrightness: CGFloat?
+    @State private var showingEditSheet = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -64,12 +65,19 @@ struct BarcodeDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink("Edit") {
-                    EditBarcodeView(barcode: barcode) {
-                        dismiss()
-                    }
+                Button("Edit") {
+                    showingEditSheet = true
                 }
             }
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            NavigationStack {
+                EditBarcodeView(barcode: barcode) {
+                    dismiss()
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .onAppear { captureAndBoostBrightness() }
         .onChange(of: scenePhase) { phase in

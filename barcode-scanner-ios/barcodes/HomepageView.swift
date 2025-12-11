@@ -3,6 +3,7 @@ import SwiftUI
 
 struct HomepageView: View {
     @Query(sort: \SavedBarcode.createdAt, order: .reverse) private var barcodes: [SavedBarcode]
+    @State private var showingAddSheet = false
 
     var body: some View {
         Group {
@@ -33,12 +34,19 @@ struct HomepageView: View {
         .navigationTitle("Barcodes")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink {
-                    AddBarcodeView()
+                Button {
+                    showingAddSheet = true
                 } label: {
                     Image(systemName: "plus")
                 }
             }
+        }
+        .sheet(isPresented: $showingAddSheet) {
+            NavigationStack {
+                AddBarcodeView()
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 }

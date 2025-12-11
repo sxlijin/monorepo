@@ -36,19 +36,12 @@ struct EditBarcodeView: View {
             lastUpdated: barcode.lastUpdated
         )
         .navigationTitle("Edit barcode")
-        .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    attemptDismiss()
-                } label: {
-                    Label("Back", systemImage: "chevron.backward")
-                }
-            }
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { attemptDismiss() }
             }
         }
+        .interactiveDismissDisabled(hasUnsavedChanges)
         .alert("Discard changes?", isPresented: $showingDiscardAlert) {
             Button("Keep Editing", role: .cancel) {}
             Button("Discard", role: .destructive) {
