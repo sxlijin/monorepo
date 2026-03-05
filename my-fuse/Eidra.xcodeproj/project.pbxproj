@@ -1,0 +1,429 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		069050A667E190BF081E0C51 /* FileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E817C1FF05C7C23C40A22F40 /* FileProviderExtension.swift */; };
+		0708D5983E473B42AC3C4710 /* EidraProvider.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC2E9370EFAF5D7D3BDD1251 /* EidraProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		22430BDB98E853F0553275DD /* FileProviderEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB069AA6575A34A5CEF2B5B5 /* FileProviderEnumerator.swift */; };
+		29A1DC6EEA46F7F531216E9E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17400145FACE88F6B737FC22 /* ContentView.swift */; };
+		64D22DEDCBFB89F4C687B46B /* FileProviderItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AFE80708B6972304B613611 /* FileProviderItem.swift */; };
+		DC13D4E1B7E0D79D63FE5C41 /* EidraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C051561B54AFA492B9E21270 /* EidraApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FB12F1D0B922811F4FEF2C9C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F7CF808CDFAC45E399BED2B0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 690937EADE796DA2BE108B37;
+			remoteInfo = EidraProvider;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		23AAB274A17A53020A47C985 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0708D5983E473B42AC3C4710 /* EidraProvider.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		17400145FACE88F6B737FC22 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7AFE80708B6972304B613611 /* FileProviderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderItem.swift; sourceTree = "<group>"; };
+		9A5B8C215F9E7DDFA410D527 /* EidraProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EidraProvider.entitlements; sourceTree = "<group>"; };
+		B3FCFC27E670F617F6BAE60D /* Eidra.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Eidra.entitlements; sourceTree = "<group>"; };
+		C051561B54AFA492B9E21270 /* EidraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EidraApp.swift; sourceTree = "<group>"; };
+		CB069AA6575A34A5CEF2B5B5 /* FileProviderEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderEnumerator.swift; sourceTree = "<group>"; };
+		CC2E9370EFAF5D7D3BDD1251 /* EidraProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EidraProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		DE6DCC2CE53D1BCDE6AF5D49 /* Eidra.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Eidra.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E817C1FF05C7C23C40A22F40 /* FileProviderExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderExtension.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		969BD7B61F77FD0C4AA6F00F /* EidraProvider */ = {
+			isa = PBXGroup;
+			children = (
+				9A5B8C215F9E7DDFA410D527 /* EidraProvider.entitlements */,
+				CB069AA6575A34A5CEF2B5B5 /* FileProviderEnumerator.swift */,
+				E817C1FF05C7C23C40A22F40 /* FileProviderExtension.swift */,
+				7AFE80708B6972304B613611 /* FileProviderItem.swift */,
+			);
+			path = EidraProvider;
+			sourceTree = "<group>";
+		};
+		9BF543E5A1F19B118B0FA52C = {
+			isa = PBXGroup;
+			children = (
+				B3D12DD96F10CB889571284F /* Eidra */,
+				969BD7B61F77FD0C4AA6F00F /* EidraProvider */,
+				A98882DF2B520F2F6B95DA2B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A98882DF2B520F2F6B95DA2B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DE6DCC2CE53D1BCDE6AF5D49 /* Eidra.app */,
+				CC2E9370EFAF5D7D3BDD1251 /* EidraProvider.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B3D12DD96F10CB889571284F /* Eidra */ = {
+			isa = PBXGroup;
+			children = (
+				17400145FACE88F6B737FC22 /* ContentView.swift */,
+				B3FCFC27E670F617F6BAE60D /* Eidra.entitlements */,
+				C051561B54AFA492B9E21270 /* EidraApp.swift */,
+			);
+			path = Eidra;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		06D3A3965B253DC8AF6619D4 /* Eidra */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 24312D70477787EEA0624398 /* Build configuration list for PBXNativeTarget "Eidra" */;
+			buildPhases = (
+				F85A54E00E92322EB4B549A9 /* Sources */,
+				23AAB274A17A53020A47C985 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FA33FC14064D2BDFC785C86A /* PBXTargetDependency */,
+			);
+			name = Eidra;
+			packageProductDependencies = (
+			);
+			productName = Eidra;
+			productReference = DE6DCC2CE53D1BCDE6AF5D49 /* Eidra.app */;
+			productType = "com.apple.product-type.application";
+		};
+		690937EADE796DA2BE108B37 /* EidraProvider */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE6808DC7D5717778C89891F /* Build configuration list for PBXNativeTarget "EidraProvider" */;
+			buildPhases = (
+				F7EF28709869859E4F7A848B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EidraProvider;
+			packageProductDependencies = (
+			);
+			productName = EidraProvider;
+			productReference = CC2E9370EFAF5D7D3BDD1251 /* EidraProvider.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F7CF808CDFAC45E399BED2B0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					06D3A3965B253DC8AF6619D4 = {
+						DevelopmentTeam = "";
+					};
+					690937EADE796DA2BE108B37 = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 4AD644E374FC433E8E227680 /* Build configuration list for PBXProject "Eidra" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9BF543E5A1F19B118B0FA52C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A98882DF2B520F2F6B95DA2B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				06D3A3965B253DC8AF6619D4 /* Eidra */,
+				690937EADE796DA2BE108B37 /* EidraProvider */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F7EF28709869859E4F7A848B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				22430BDB98E853F0553275DD /* FileProviderEnumerator.swift in Sources */,
+				069050A667E190BF081E0C51 /* FileProviderExtension.swift in Sources */,
+				64D22DEDCBFB89F4C687B46B /* FileProviderItem.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F85A54E00E92322EB4B549A9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				29A1DC6EEA46F7F531216E9E /* ContentView.swift in Sources */,
+				DC13D4E1B7E0D79D63FE5C41 /* EidraApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FA33FC14064D2BDFC785C86A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 690937EADE796DA2BE108B37 /* EidraProvider */;
+			targetProxy = FB12F1D0B922811F4FEF2C9C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		36CD1E182B5C787CF617D6E1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = EidraProvider/EidraProvider.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EidraProvider/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.roundcolors.eidra.provider;
+				PRODUCT_NAME = EidraProvider;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		5DAF9FCD651BD1AAB9BA1DC4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		6AE651C945C91EDA739B7D69 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = EidraProvider/EidraProvider.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EidraProvider/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.roundcolors.eidra.provider;
+				PRODUCT_NAME = EidraProvider;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		72C4F08CCAC8EF9DE50A0962 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		75598F6353A1D6BCC5D02E24 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Eidra/Eidra.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.roundcolors.eidra;
+				PRODUCT_NAME = Eidra;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		9FD289006B77CD9A9E845432 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Eidra/Eidra.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.roundcolors.eidra;
+				PRODUCT_NAME = Eidra;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		24312D70477787EEA0624398 /* Build configuration list for PBXNativeTarget "Eidra" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9FD289006B77CD9A9E845432 /* Debug */,
+				75598F6353A1D6BCC5D02E24 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4AD644E374FC433E8E227680 /* Build configuration list for PBXProject "Eidra" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5DAF9FCD651BD1AAB9BA1DC4 /* Debug */,
+				72C4F08CCAC8EF9DE50A0962 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CE6808DC7D5717778C89891F /* Build configuration list for PBXNativeTarget "EidraProvider" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6AE651C945C91EDA739B7D69 /* Debug */,
+				36CD1E182B5C787CF617D6E1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = F7CF808CDFAC45E399BED2B0 /* Project object */;
+}
