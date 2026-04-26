@@ -1,0 +1,10 @@
+/target
+demucs-sandbox
+research/gyroflow
+.DS_Store
+node_modules
+.venv
+separated
+__pycache__
+.qmlls.ini
+.obsidian

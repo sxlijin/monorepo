@@ -232,26 +232,26 @@ ApplicationWindow {
             // Waveform Visualization
             GroupBox {
                 id: waveformVisualizationSection
-                width: parent.width
+                width: mainContentScroll.availableWidth
                 height: mainWindow.totalWaveformHeight
-                
+
                 background: Rectangle {
                     color: Styles.windowBackgroundColor
                     radius: 8
                 }
-                    
+
                 DebugBorderRectangle {}
-                
+
                 Column {
                     width: parent.width
                     height: parent.height
                     spacing: waveformSpacing
-                    
+
                     // Waveform display for each stem
                     Repeater {
                         id: waveformRepeater
                         model: mainWindow.stemCount
-                        
+
                         Rectangle {
                             id: stemRect
                             width: parent.width
