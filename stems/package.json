@@ -1,0 +1,16 @@
+{
+  "name": "stems",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "lucide": "^0.539.0",
+    "lucide-static": "^0.539.0"
+  }
+}
