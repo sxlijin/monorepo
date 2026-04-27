@@ -409,16 +409,11 @@ ApplicationWindow {
                                         onWheel: function(wheel) {
                                             if (wheel.modifiers & Qt.ShiftModifier) {
                                                 // Shift + scroll: seek through audio
-                                                var seekAmount = wheel.angleDelta.y > 0 ? 2.0 : -2.0
+                                                var seekAmount = wheel.angleDelta.y > 0 ? 0.5 : -0.5
                                                 if (multiBridge) {
                                                     var newPosition = Math.max(0, Math.min(multiBridge.duration, multiBridge.current_position + seekAmount))
                                                     multiBridge.seek(newPosition)
                                                 }
-                                                return
-                                            }
-
-                                            // Zoom requires Cmd (Qt.ControlModifier on macOS)
-                                            if (!(wheel.modifiers & Qt.ControlModifier)) {
                                                 return
                                             }
 
@@ -427,10 +422,23 @@ ApplicationWindow {
                                                 return
                                             }
 
-                                            var zoomFactor = wheel.angleDelta.y > 0 ? 0.95 : 1.05
-                                            var currentZoom = mainWindow.waveformTimeWidthSecs
-                                            var newZoom = Math.max(1.0, Math.min(30.0, currentZoom * zoomFactor))
-                                            mainWindow.waveformTimeWidthSecs = newZoom
+                                            if (wheel.modifiers & Qt.ControlModifier) {
+                                                // Cmd + vertical scroll: zoom
+                                                var zoomFactor = wheel.angleDelta.y > 0 ? 0.95 : 1.05
+                                                var currentZoom = mainWindow.waveformTimeWidthSecs
+                                                var newZoom = Math.max(1.0, Math.min(30.0, currentZoom * zoomFactor))
+                                                mainWindow.waveformTimeWidthSecs = newZoom
+                                                return
+                                            }
+
+                                            // Plain vertical scroll: adjust this stem's volume
+                                            if (multiBridge) {
+                                                var volDelta = wheel.angleDelta.y / 120.0
+                                                var volumeStep = 0.1
+                                                var currentVolume = multiBridge.get_file_volume(stemRect.index)
+                                                var newVolume = Math.max(0.0, Math.min(2.0, currentVolume + volDelta * volumeStep))
+                                                multiBridge.set_file_volume(stemRect.index, newVolume)
+                                            }
                                         }
 
                                         function calculateDragPosition(currentMouseX) {

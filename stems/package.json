@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "lucide": "^0.539.0",
-    "lucide-static": "^0.539.0"
+    "lucide": "^1.11.0",
+    "lucide-static": "^1.11.0"
   }
 }
