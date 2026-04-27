@@ -414,13 +414,23 @@ ApplicationWindow {
                                                     var newPosition = Math.max(0, Math.min(multiBridge.duration, multiBridge.current_position + seekAmount))
                                                     multiBridge.seek(newPosition)
                                                 }
-                                            } else {
-                                                // Normal scroll: zoom
-                                                var zoomFactor = wheel.angleDelta.y > 0 ? 0.9 : 1.1
-                                                var currentZoom = mainWindow.waveformTimeWidthSecs
-                                                var newZoom = Math.max(1.0, Math.min(30.0, currentZoom * zoomFactor))
-                                                mainWindow.waveformTimeWidthSecs = newZoom
+                                                return
                                             }
+
+                                            // Zoom requires Cmd (Qt.ControlModifier on macOS)
+                                            if (!(wheel.modifiers & Qt.ControlModifier)) {
+                                                return
+                                            }
+
+                                            // Trackpad two-finger drag: only react to vertical-dominant events
+                                            if (Math.abs(wheel.angleDelta.y) <= Math.abs(wheel.angleDelta.x)) {
+                                                return
+                                            }
+
+                                            var zoomFactor = wheel.angleDelta.y > 0 ? 0.95 : 1.05
+                                            var currentZoom = mainWindow.waveformTimeWidthSecs
+                                            var newZoom = Math.max(1.0, Math.min(30.0, currentZoom * zoomFactor))
+                                            mainWindow.waveformTimeWidthSecs = newZoom
                                         }
 
                                         function calculateDragPosition(currentMouseX) {
