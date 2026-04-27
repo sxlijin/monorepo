@@ -1,18 +1,3 @@
-import sys
-import os
-
-# Ensure our project and optional virtualenv site-packages are available without
-# clobbering the interpreter's default sys.path (which provides the stdlib).
-EXTRA_IMPORT_PATHS = [
-    '.',
-    '/Users/sam/sam-repos/stems/src/analysis',
-    '/Users/sam/sam-repos/stems/.venv/lib/python3.13/site-packages',
-]
-
-for path in EXTRA_IMPORT_PATHS:
-    if path and path not in sys.path:
-        sys.path.insert(0, path)
-
 import numpy as np
 import librosa
 

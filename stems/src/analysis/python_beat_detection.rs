@@ -34,6 +34,8 @@ pub struct PythonBeatResult {
 /// Call Python beat detection on a MappedAudioFile using in-memory data
 pub fn detect_beats_python(audio_file: &MappedAudioFile) -> Result<PythonBeatResult> {
     Python::with_gil(|py| -> Result<PythonBeatResult> {
+        super::python_env::bootstrap_venv_site_packages(py)?;
+
         tracing::debug!(
             "Running Python beat detection on audio file with {} samples",
             audio_file.sample_count

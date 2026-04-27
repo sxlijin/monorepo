@@ -22,6 +22,8 @@ const PY_SOURCE: &str = include_str!("stem_separation.py");
 
 pub fn separate_stems(audio_path: &str, stems_root: &Path) -> Result<SeparationResult> {
     Python::with_gil(|py| -> Result<SeparationResult> {
+        super::python_env::bootstrap_venv_site_packages(py)?;
+
         let code_cstr = CString::new(PY_SOURCE)
             .context("Failed to create CString from stem separation code")?;
         let globals = PyDict::new(py);

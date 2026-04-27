@@ -1,6 +1,7 @@
 pub mod aubio_beat_detection;
 pub mod beat_data;
 pub mod python_beat_detection;
+pub mod python_env;
 pub mod python_separation;
 pub mod raw_waveform;
 pub mod spectral;
