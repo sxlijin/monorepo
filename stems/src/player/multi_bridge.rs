@@ -3,7 +3,8 @@ use crate::analysis::{self, RawWaveformData, SeparationResult};
 use crate::audio::wav_loader::WavLoader;
 use crate::audio::{
     extract_metadata, extract_metadata_from_first_file, DeviceManager, MultiAudioCommand,
-    MultiAudioEngine, MultiAudioState, SongMetadata, StemDiscovery,
+    MultiAudioEngine, MultiAudioState, SongMetadata, StemDiscovery, MAX_PLAYBACK_SPEED,
+    MIN_PLAYBACK_SPEED,
 };
 use crate::constants::StemType;
 use crate::waveform_registry::WAVEFORM_REGISTRY;
@@ -399,6 +400,7 @@ pub struct MultiBridge {
     get_audio_devices: qt_method!(fn(&self) -> QVariantList),
     set_audio_device: qt_method!(fn(&mut self, device_name: QString) -> bool),
     set_master_volume: qt_method!(fn(&mut self, volume: f64)),
+    set_playback_speed: qt_method!(fn(&mut self, speed: f64)),
     set_file_volume: qt_method!(fn(&mut self, file_index: i32, volume: f64)),
     toggle_mute: qt_method!(fn(&mut self, file_index: i32)),
     solo_track: qt_method!(fn(&mut self, file_index: i32)),
@@ -424,6 +426,7 @@ pub struct MultiBridge {
     pub current_position: qt_property!(f64; NOTIFY current_position_changed),
     pub duration: qt_property!(f64; NOTIFY duration_changed),
     pub master_volume: qt_property!(f64; NOTIFY master_volume_changed),
+    pub playback_speed: qt_property!(f64; NOTIFY playback_speed_changed),
     pub file_count: qt_property!(i32; NOTIFY file_count_changed),
     pub current_device: qt_property!(QString; NOTIFY current_device_changed),
     pub loading_state: qt_property!(QVariantMap; NOTIFY loading_state_changed),
@@ -435,6 +438,7 @@ pub struct MultiBridge {
     pub current_position_changed: qt_signal!(),
     pub duration_changed: qt_signal!(),
     pub master_volume_changed: qt_signal!(),
+    pub playback_speed_changed: qt_signal!(),
     pub file_count_changed: qt_signal!(),
     pub current_device_changed: qt_signal!(),
     pub loading_state_changed: qt_signal!(),
@@ -475,6 +479,7 @@ impl MultiBridge {
             get_audio_devices: Default::default(),
             set_audio_device: Default::default(),
             set_master_volume: Default::default(),
+            set_playback_speed: Default::default(),
             set_file_volume: Default::default(),
             toggle_mute: Default::default(),
             solo_track: Default::default(),
@@ -496,6 +501,7 @@ impl MultiBridge {
             current_position: 0.0,
             duration: 0.0,
             master_volume: 1.0,
+            playback_speed: 1.0,
             file_count: 0,
             current_device: QString::default(),
             loading_state: QVariantMap::default(),
@@ -504,6 +510,7 @@ impl MultiBridge {
             current_position_changed: Default::default(),
             duration_changed: Default::default(),
             master_volume_changed: Default::default(),
+            playback_speed_changed: Default::default(),
             file_count_changed: Default::default(),
             current_device_changed: Default::default(),
             loading_state_changed: Default::default(),
@@ -604,6 +611,13 @@ impl MultiBridge {
             changed = true;
         }
 
+        let new_speed = state.playback_speed as f64;
+        if (self.playback_speed - new_speed).abs() > f64::EPSILON {
+            self.playback_speed = new_speed;
+            self.playback_speed_changed();
+            changed = true;
+        }
+
         let new_file_count = state.file_count as i32;
         if self.file_count != new_file_count {
             self.file_count = new_file_count;
@@ -665,6 +679,17 @@ impl MultiBridge {
 
         // Send command to audio engine
         self.send_audio_command(MultiAudioCommand::SetMasterVolume(volume as f32));
+    }
+
+    fn set_playback_speed(&mut self, speed: f64) {
+        let clamped = (speed as f32).clamp(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED);
+        tracing::info!("Set playback speed to: {:.2}x", clamped);
+
+        // Update UI state immediately for responsiveness
+        self.playback_speed = clamped as f64;
+        self.playback_speed_changed();
+
+        self.send_audio_command(MultiAudioCommand::SetPlaybackSpeed(clamped));
     }
 
     fn set_file_volume(&mut self, file_index: i32, volume: f64) {
@@ -773,7 +798,38 @@ impl MultiBridge {
         Ok(Path::new(&home).join("Music"))
     }
 
+    /// Two-step pipeline:
+    ///   1. yt-dlp pulls YouTube's highest-bitrate audio stream as Opus,
+    ///      byte-for-byte (no re-encode). See `download_opus` for why Opus.
+    ///   2. ffmpeg decodes Opus and resamples to 44.1 kHz s16 WAV.
+    ///      htdemucs is trained at 44.1 kHz: it resamples its input to
+    ///      44.1 kHz internally and emits stems at 44.1 kHz, so feeding
+    ///      it 44.1 kHz directly avoids an extra resample inside demucs
+    ///      and keeps the source WAV at the same rate as the stems
+    ///      demucs will produce (which the player also depends on).
     fn run_yt_dlp_download(url: &str, music_dir: &Path, repo_root: &Path) -> Result<DownloadResult, String> {
+        let opus_path = Self::download_opus(url, music_dir, repo_root)?;
+        let wav_path = Self::resample_to_demucs_wav(&opus_path)?;
+        Ok(DownloadResult {
+            audio_path: wav_path.to_string_lossy().into_owned(),
+        })
+    }
+
+    /// Download the source's Opus audio stream as-is (no re-encoding).
+    ///
+    /// We start with Opus because we want the highest-fidelity representation
+    /// of the audio we can get from YouTube. YouTube serves multiple per-video
+    /// audio streams via DASH (typically AAC at 49/130 kbps and Opus at
+    /// 137-160 kbps); for music content the highest-bitrate stream is almost
+    /// always Opus, and `--audio-format opus` tells yt-dlp to keep that stream
+    /// bit-for-bit (just remuxed into an Ogg/Opus container). Any later step
+    /// that wants WAV/FLAC works from this Opus master, so we never go through
+    /// an unnecessary lossy hop.
+    ///
+    /// None of YouTube's streams are the uploader's original master — they're
+    /// all lossy re-encodes of it — but among what's actually retrievable,
+    /// this is the best.
+    fn download_opus(url: &str, music_dir: &Path, repo_root: &Path) -> Result<PathBuf, String> {
         let output_template = music_dir.join("%(title)s.%(ext)s");
         let output_pattern = output_template.to_string_lossy().into_owned();
 
@@ -783,9 +839,7 @@ impl MultiBridge {
             .arg("yt-dlp")
             .arg("--extract-audio")
             .arg("--audio-format")
-            .arg("wav")
-            .arg("--audio-quality")
-            .arg("0")
+            .arg("opus")
             .arg("--embed-metadata")
             .arg("--output")
             .arg(&output_pattern)
@@ -828,18 +882,18 @@ impl MultiBridge {
                 std::fs::read_dir(music_dir)
                     .ok()
                     .and_then(|entries| {
-                        let mut wav_files: Vec<_> = entries
+                        let mut opus_files: Vec<_> = entries
                             .filter_map(|entry| entry.ok())
                             .filter(|entry| {
                                 entry
                                     .path()
                                     .extension()
-                                    .map(|ext| ext.eq_ignore_ascii_case("wav"))
+                                    .map(|ext| ext.eq_ignore_ascii_case("opus"))
                                     .unwrap_or(false)
                             })
                             .collect();
-                        wav_files.sort_by_key(|entry| entry.metadata().and_then(|meta| meta.modified()).ok());
-                        wav_files
+                        opus_files.sort_by_key(|entry| entry.metadata().and_then(|meta| meta.modified()).ok());
+                        opus_files
                             .into_iter()
                             .last()
                             .map(|entry| entry.path().to_string_lossy().into_owned())
@@ -849,7 +903,7 @@ impl MultiBridge {
         match audio_path {
             Some(path) if Path::new(&path).exists() => {
                 tracing::info!("yt-dlp download completed: {}", path);
-                Ok(DownloadResult { audio_path: path })
+                Ok(PathBuf::from(path))
             }
             Some(path) => {
                 tracing::error!("yt-dlp reported output but file missing: {}", path);
@@ -864,6 +918,51 @@ impl MultiBridge {
                 Err("Failed to determine downloaded file path".to_string())
             }
         }
+    }
+
+    fn resample_to_demucs_wav(opus_path: &Path) -> Result<PathBuf, String> {
+        // 44.1 kHz is htdemucs's native rate; see comment on run_yt_dlp_download.
+        const DEMUCS_SAMPLE_RATE: &str = "44100";
+
+        let wav_path = opus_path.with_extension("wav");
+        let mut command = Command::new("ffmpeg");
+        command
+            .arg("-y")
+            .arg("-loglevel")
+            .arg("error")
+            .arg("-i")
+            .arg(opus_path)
+            .arg("-ar")
+            .arg(DEMUCS_SAMPLE_RATE)
+            .arg("-c:a")
+            .arg("pcm_s16le")
+            .arg(&wav_path);
+
+        tracing::info!("Executing ffmpeg resample command: {:?}", command);
+
+        let output = command
+            .output()
+            .map_err(|err| format!("Failed to run ffmpeg: {}", err))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::error!(
+                "ffmpeg exited with status {:?}. stderr: {}",
+                output.status,
+                stderr
+            );
+            return Err(format!("ffmpeg resample failed: {}", stderr.trim()));
+        }
+
+        if !wav_path.exists() {
+            return Err(format!(
+                "ffmpeg reported success but output missing: {}",
+                wav_path.display()
+            ));
+        }
+
+        tracing::info!("Resampled to 44.1 kHz WAV: {}", wav_path.display());
+        Ok(wav_path)
     }
 
     fn spawn_download_task(
@@ -1439,10 +1538,9 @@ impl MultiBridge {
                 };
 
                 tracing::info!(
-                    "Stem separation successful: {} (files: {:?}, drums split: {})",
+                    "Stem separation successful: {} (files: {:?})",
                     stem_dir,
-                    separation.generated_files,
-                    separation.drum_split_performed
+                    separation.generated_files
                 );
 
                 self.original_file_for_beats = Some(original_path.clone());

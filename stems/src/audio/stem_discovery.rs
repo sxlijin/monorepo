@@ -25,8 +25,7 @@ impl StemDiscovery {
         let stem_types = [
             StemType::Vocals,
             StemType::Bass,
-            StemType::DrumsHi,
-            StemType::DrumsLo,
+            StemType::Drums,
             StemType::Other,
         ];
         let mut found_stems = Vec::new();

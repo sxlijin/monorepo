@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Download a URL with yt-dlp and split the result into stems with demucs."""
+"""Download a URL with yt-dlp as a WAV file and split it into stems with demucs."""
 import argparse
 import subprocess
 import sys
@@ -11,14 +11,13 @@ sys.path.insert(0, str(REPO_ROOT / "src" / "analysis"))
 from stem_separation import separate_stems
 
 
-def download_url(url: str, music_dir: Path) -> str:
+def download_wav(url: str, music_dir: Path) -> Path:
     output_template = str(music_dir / "%(title)s.%(ext)s")
     proc = subprocess.run(
         [
             "uv", "run", "yt-dlp",
             "--extract-audio",
             "--audio-format", "wav",
-            "--audio-quality", "0",
             "--embed-metadata",
             "--output", output_template,
             url,
@@ -35,7 +34,7 @@ def download_url(url: str, music_dir: Path) -> str:
     for line in (proc.stdout + "\n" + proc.stderr).splitlines():
         stripped = line.strip()
         if stripped.startswith(prefix):
-            return stripped[len(prefix):].strip()
+            return Path(stripped[len(prefix):].strip())
 
     raise RuntimeError(
         f"Could not determine downloaded file path from yt-dlp output.\n"
@@ -57,12 +56,12 @@ def main() -> int:
     music_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Downloading {args.url} into {music_dir} ...", flush=True)
-    audio_path = download_url(args.url, music_dir)
-    print(f"Downloaded: {audio_path}", flush=True)
+    wav_path = download_wav(args.url, music_dir)
+    print(f"Downloaded: {wav_path}", flush=True)
 
     stems_root = music_dir / "stems"
     print(f"Separating stems into {stems_root} ...", flush=True)
-    result = separate_stems(audio_path, str(stems_root))
+    result = separate_stems(str(wav_path), str(stems_root))
 
     if not result["success"]:
         print(f"Stem separation failed: {result['error']}", file=sys.stderr)
@@ -71,8 +70,6 @@ def main() -> int:
     print(f"Stems written to: {result['stem_dir']}")
     for name in result["generated_files"]:
         print(f"  - {name}")
-    if result["drum_split_performed"]:
-        print("Drum hi/lo split written (drums-hi.wav, drums-lo.wav).")
     return 0
 
 

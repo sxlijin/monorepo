@@ -3,14 +3,12 @@ pub const WAV_FILES: &[&str] = &[
     // Test file
     "./demucs-sandbox/ta_test.wav",
     // Leikeli47 - Money (separated stems)
-    "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/drums-hi.wav",
-    "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/drums-lo.wav",
+    "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/drums.wav",
     "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/vocals.wav",
     "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/other.wav",
     "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/bass.wav",
     // Alannah Myles - Black Velvet 0 (separated stems)
-    "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/drums-hi.wav",
-    "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/drums-lo.wav",
+    "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/drums.wav",
     "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/vocals.wav",
     "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/other.wav",
     "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/bass.wav",
@@ -21,16 +19,14 @@ pub const WAV_FILES: &[&str] = &[
 pub enum StemType {
     Vocals,
     Bass,
-    DrumsHi,
-    DrumsLo,
+    Drums,
     Other,
 }
 
 impl StemType {
     pub fn file_name(self) -> &'static str {
         match self {
-            StemType::DrumsHi => "drums-hi",
-            StemType::DrumsLo => "drums-lo",
+            StemType::Drums => "drums",
             StemType::Vocals => "vocals",
             StemType::Other => "other",
             StemType::Bass => "bass",
@@ -39,19 +35,17 @@ impl StemType {
 
     pub fn display_name(self) -> &'static str {
         match self {
-            StemType::DrumsHi => "drums-hi",
-            StemType::DrumsLo => "drums-lo",
+            StemType::Drums => "drums",
             StemType::Vocals => "vocals",
             StemType::Other => "other",
             StemType::Bass => "bass",
         }
     }
 
-    pub const DISPLAY_ORDER: [StemType; 5] = [
+    pub const DISPLAY_ORDER: [StemType; 4] = [
         StemType::Vocals,
         StemType::Bass,
-        StemType::DrumsHi,
-        StemType::DrumsLo,
+        StemType::Drums,
         StemType::Other,
     ];
 
@@ -59,9 +53,8 @@ impl StemType {
         match self {
             StemType::Vocals => 0,
             StemType::Bass => 1,
-            StemType::DrumsHi => 2,
-            StemType::DrumsLo => 3,
-            StemType::Other => 4,
+            StemType::Drums => 2,
+            StemType::Other => 3,
         }
     }
 
@@ -95,11 +88,8 @@ impl SongDataset {
                     "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/other.wav"
                 }
                 StemType::Bass => "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/bass.wav",
-                StemType::DrumsHi => {
-                    "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/drums-hi.wav"
-                }
-                StemType::DrumsLo => {
-                    "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/drums-lo.wav"
+                StemType::Drums => {
+                    "./demucs-sandbox/separated/htdemucs/Leikeli47 - Money/drums.wav"
                 }
             },
             SongDataset::AlannahMylesBlackVelvet => match stem {
@@ -112,11 +102,8 @@ impl SongDataset {
                 StemType::Bass => {
                     "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/bass.wav"
                 }
-                StemType::DrumsHi => {
-                    "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/drums-hi.wav"
-                }
-                StemType::DrumsLo => {
-                    "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/drums-lo.wav"
+                StemType::Drums => {
+                    "./demucs-sandbox/separated/htdemucs/Alannah Myles - Black Velvet 0/drums.wav"
                 }
             },
         }

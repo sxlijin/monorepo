@@ -42,7 +42,7 @@ ApplicationWindow {
     readonly property int windowBottomPadding: 15
     readonly property int minWaveformHeight: 150   // Minimum height per waveform
     readonly property int waveformSpacing: 20
-    readonly property int stemCount: 5
+    readonly property int stemCount: 4
     property real waveformTimeWidthSecs: 5.0  // seconds of audio to show in waveform viewport (modifiable for zoom)
     readonly property int waveformControlsWidth: 120  // fixed width for controls panel
     readonly property int transportControlsHeight: 100  // fixed height for transport controls section
@@ -202,8 +202,8 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottom: transportControlsContainer.top
-            anchors.bottomMargin: 8
+            anchors.bottom: waveformTimestampRow.top
+            anchors.bottomMargin: 4
             
             // Custom scrollbar with adaptive behavior
             ScrollBar.vertical: ScrollBar {
@@ -264,20 +264,17 @@ ApplicationWindow {
                                 Styles.stemVocalsColor,
                                 Styles.stemBassColor,
                                 Styles.stemDrumsColor,
-                                Styles.stemDrumsColor,
                                 Styles.stemOtherColor
                             ]
                             property var stemColorsDark: [
                                 Styles.stemVocalsColorDark,
                                 Styles.stemBassColorDark,
                                 Styles.stemDrumsColorDark,
-                                Styles.stemDrumsColorDark,
                                 Styles.stemOtherColorDark
                             ]
                             property var stemColorsBright: [
                                 Styles.stemVocalsColorBright,
                                 Styles.stemBassColorBright,
-                                Styles.stemDrumsColorBright,
                                 Styles.stemDrumsColorBright,
                                 Styles.stemOtherColorBright
                             ]
@@ -306,11 +303,6 @@ ApplicationWindow {
                                         multiBridge.file_count
                                         if (multiBridge.waveform_failed(stemRect.index)) {
                                             return "Failed to load waveform"
-                                        }
-                                        if (stemRect.index === 2) {
-                                            return "drums-hi"
-                                        } else if (stemRect.index === 3) {
-                                            return "drums-lo"
                                         }
                                         return multiBridge.get_file_name(stemRect.index)
                                     }
@@ -660,6 +652,66 @@ ApplicationWindow {
             }
         }
         
+        // Timestamp row underneath waveforms: visible window edges + current playback time
+        Item {
+            id: waveformTimestampRow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: transportControlsContainer.top
+            anchors.bottomMargin: 4
+            height: 18
+
+            function formatTime(sec) {
+                let s = Math.max(0, sec)
+                let dur = multiBridge ? multiBridge.duration : 0
+                if (dur > 0) s = Math.min(s, dur)
+                let mins = Math.floor(s / 60)
+                let secs = s - mins * 60
+                return mins.toString().padStart(2, '0') + ":" + secs.toFixed(1).padStart(4, '0')
+            }
+
+            // Time at the left edge of the visible waveform window
+            Text {
+                id: visibleStartTimeLabel
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                text: {
+                    if (!multiBridge) return "00:00.0"
+                    return waveformTimestampRow.formatTime(multiBridge.current_position - mainWindow.waveformTimeWidthSecs * 0.2)
+                }
+                font.pointSize: 9
+                color: Styles.secondaryTextColor
+            }
+
+            // Time at the right edge of the visible waveform window (aligned with end of waveform, before controls panel)
+            Text {
+                id: visibleEndTimeLabel
+                anchors.right: parent.right
+                anchors.rightMargin: mainWindow.waveformControlsWidth
+                anchors.bottom: parent.bottom
+                text: {
+                    if (!multiBridge) return "00:00.0"
+                    return waveformTimestampRow.formatTime(multiBridge.current_position + mainWindow.waveformTimeWidthSecs * 0.8)
+                }
+                font.pointSize: 9
+                color: Styles.secondaryTextColor
+            }
+
+            // Current playback timestamp, centered under the red playback cursor (at 20% of the waveform width)
+            Text {
+                id: playbackTimestampLabel
+                anchors.bottom: parent.bottom
+                x: (parent.width - mainWindow.waveformControlsWidth) * 0.2 - width / 2
+                text: {
+                    if (!multiBridge) return "00:00.0"
+                    return waveformTimestampRow.formatTime(multiBridge.current_position)
+                }
+                font.pointSize: 11
+                font.bold: true
+                color: Styles.primaryTextColor
+            }
+        }
+
         // Transport Controls Section pinned to bottom
         Rectangle {
             id: transportControlsContainer
@@ -1013,7 +1065,109 @@ ApplicationWindow {
                                 anchors.rightMargin: 12  // Small gap between volume controls and buttons
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 8
-                                
+
+                                // Playback speed control (range 0.2x - 3.0x)
+                                readonly property real minPlaybackSpeed: 0.2
+                                readonly property real maxPlaybackSpeed: 3.0
+
+                                Text {
+                                    text: (multiBridge ? multiBridge.playback_speed : 1.0).toFixed(2) + "x"
+                                    font.pointSize: 10
+                                    color: Styles.secondaryTextColor
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 42
+                                    horizontalAlignment: Text.AlignRight
+                                }
+
+                                Rectangle {
+                                    id: playbackSpeedSlider
+                                    width: 100
+                                    height: Styles.transportVolumeSliderHeight
+                                    color: Styles.sliderTrackColor
+                                    radius: Styles.transportVolumeSliderHeight / 2
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    readonly property real minSpeed: parent.minPlaybackSpeed
+                                    readonly property real maxSpeed: parent.maxPlaybackSpeed
+                                    property real value: multiBridge ? multiBridge.playback_speed : 1.0
+                                    property bool isHovered: speedMouseArea.containsMouse
+
+                                    function normalizedFromSpeed(speed) {
+                                        return Math.max(0, Math.min(1, (speed - minSpeed) / (maxSpeed - minSpeed)))
+                                    }
+                                    function speedFromNormalized(n) {
+                                        return minSpeed + Math.max(0, Math.min(1, n)) * (maxSpeed - minSpeed)
+                                    }
+
+                                    Rectangle {
+                                        id: playbackSpeedProgress
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: playbackSpeedSlider.normalizedFromSpeed(playbackSpeedSlider.value) * parent.width
+                                        height: parent.height
+                                        color: playbackSpeedSlider.isHovered ? Styles.transportSliderHoverColor : Styles.transportSliderColor
+                                        radius: Styles.transportVolumeSliderHeight / 2
+
+                                        Behavior on color {
+                                            ColorAnimation { duration: 150 }
+                                        }
+                                    }
+
+                                    // 1.0x reference tick
+                                    Rectangle {
+                                        width: 2
+                                        height: parent.height + 4
+                                        color: Styles.secondaryTextColor
+                                        opacity: 0.5
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: playbackSpeedSlider.normalizedFromSpeed(1.0) * parent.width - width / 2
+                                    }
+
+                                    // Position indicator circle
+                                    Rectangle {
+                                        visible: playbackSpeedSlider.isHovered
+                                        width: 12
+                                        height: 12
+                                        radius: 6
+                                        color: Styles.transportSliderHandleColor
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: playbackSpeedSlider.normalizedFromSpeed(playbackSpeedSlider.value) * parent.width - width / 2
+
+                                        Behavior on opacity {
+                                            NumberAnimation { duration: 150 }
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: speedMouseArea
+                                        anchors.centerIn: parent
+                                        width: parent.width
+                                        height: 20
+                                        hoverEnabled: true
+
+                                        function applyAt(mouseX) {
+                                            if (!multiBridge) return
+                                            let normalized = Math.max(0, Math.min(1, mouseX / width))
+                                            multiBridge.set_playback_speed(playbackSpeedSlider.speedFromNormalized(normalized))
+                                        }
+
+                                        onClicked: function(mouse) { applyAt(mouse.x) }
+                                        onPositionChanged: function(mouse) { if (pressed) applyAt(mouse.x) }
+                                        onDoubleClicked: function(mouse) {
+                                            // Snap back to 1.0x on double-click
+                                            if (multiBridge) multiBridge.set_playback_speed(1.0)
+                                        }
+                                        onWheel: function(wheel) {
+                                            if (!multiBridge) return
+                                            let step = (wheel.angleDelta.y / 120.0) * 0.05
+                                            let next = Math.max(playbackSpeedSlider.minSpeed,
+                                                                Math.min(playbackSpeedSlider.maxSpeed,
+                                                                         multiBridge.playback_speed + step))
+                                            multiBridge.set_playback_speed(next)
+                                        }
+                                    }
+                                }
+
                                 Text {
                                     text: Math.round((multiBridge ? multiBridge.master_volume : 1.0) * 100) + "%"
                                     font.pointSize: 10

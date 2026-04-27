@@ -1,11 +1,14 @@
 use anyhow::{Context, Result};
-use atomic_float::AtomicF32;
+use atomic_float::{AtomicF32, AtomicF64};
 use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{Device, Sample, SampleFormat, Stream, StreamConfig};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use tracing::{debug, error, info, warn};
+
+pub const MIN_PLAYBACK_SPEED: f32 = 0.2;
+pub const MAX_PLAYBACK_SPEED: f32 = 3.0;
 
 use super::wav_loader::{MappedAudioFile, WavLoader};
 
@@ -20,6 +23,7 @@ pub enum MultiAudioCommand {
     ToggleMute(usize),      // Toggle mute state for specific file
     SoloTrack(usize),       // Solo a track (zero all others)
     SetMasterVolume(f32),
+    SetPlaybackSpeed(f32),
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +32,7 @@ pub struct MultiAudioState {
     pub position_seconds: f64,
     pub duration_seconds: f64,
     pub master_volume: f32,
+    pub playback_speed: f32,
     pub file_count: usize,
     pub file_volumes: Vec<f32>,
     pub file_mutes: Vec<bool>, // Derived from volume == 0.0
@@ -41,6 +46,7 @@ impl Default for MultiAudioState {
             position_seconds: 0.0,
             duration_seconds: 0.0,
             master_volume: 1.0,
+            playback_speed: 1.0,
             file_count: 0,
             file_volumes: Vec::new(),
             file_mutes: Vec::new(),
@@ -51,9 +57,13 @@ impl Default for MultiAudioState {
 
 struct MultiAudioEngineInner {
     audio_files: Vec<MappedAudioFile>,
-    position_samples: AtomicUsize,
+    // Song-time playback position, expressed in device-rate frames so that
+    // position_seconds = position_frames / sample_rate. Stored as f64 because
+    // non-integer playback speeds advance by fractional amounts per buffer.
+    position_frames: AtomicF64,
     is_playing: AtomicBool,
     master_volume: AtomicF32,
+    playback_speed: AtomicF32,
     file_volumes: Vec<AtomicF32>,
     sample_rate: u32,
 }
@@ -62,9 +72,10 @@ impl MultiAudioEngineInner {
     fn new(sample_rate: u32) -> Self {
         Self {
             audio_files: Vec::new(),
-            position_samples: AtomicUsize::new(0),
+            position_frames: AtomicF64::new(0.0),
             is_playing: AtomicBool::new(false),
             master_volume: AtomicF32::new(1.0),
+            playback_speed: AtomicF32::new(1.0),
             file_volumes: Vec::new(),
             sample_rate,
         }
@@ -93,22 +104,27 @@ impl MultiAudioEngineInner {
         let file_count = files.len();
         self.file_volumes = (0..file_count).map(|_| AtomicF32::new(1.0)).collect();
         self.audio_files = files;
-        self.position_samples.store(0, Ordering::SeqCst);
+        self.position_frames.store(0.0, Ordering::SeqCst);
 
         info!("Successfully loaded {} files", file_count);
         Ok(())
     }
 
     fn get_max_duration_samples(&self) -> usize {
+        let device_rate_f = self.sample_rate as f64;
         self.audio_files
             .iter()
-            .map(|file| file.sample_count / file.spec.channels as usize)
+            .map(|file| {
+                let file_frames = file.sample_count / file.spec.channels as usize;
+                let file_rate_f = file.spec.sample_rate as f64;
+                (file_frames as f64 * device_rate_f / file_rate_f).ceil() as usize
+            })
             .max()
             .unwrap_or(0)
     }
 
     fn mix_audio_callback(&self, output: &mut [f32]) {
-        let position = self.position_samples.load(Ordering::SeqCst);
+        let position_frames = self.position_frames.load(Ordering::SeqCst);
         let is_playing = self.is_playing.load(Ordering::SeqCst);
 
         if !is_playing {
@@ -119,10 +135,17 @@ impl MultiAudioEngineInner {
 
         // Load atomic values without any locks for maximum performance
         let master_vol = self.master_volume.load(Ordering::SeqCst);
+        let speed = self
+            .playback_speed
+            .load(Ordering::SeqCst)
+            .clamp(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED) as f64;
+        let device_rate_f = self.sample_rate as f64;
 
         // Fill output buffer with mixed audio
         for (i, output_sample) in output.chunks_exact_mut(2).enumerate() {
-            let sample_position = position + i;
+            // Song-time position in device-rate frames. Speed > 1 walks through
+            // the source faster (and pitches up); speed < 1 the opposite.
+            let song_frame = position_frames + (i as f64) * speed;
             let mut mixed_left = 0.0f32;
             let mut mixed_right = 0.0f32;
 
@@ -139,30 +162,39 @@ impl MultiAudioEngineInner {
                     continue;
                 }
 
-                // Handle both mono and stereo files correctly using memory-mapped access
+                // Resample on the fly with linear interpolation between adjacent
+                // source frames.
                 let channels = audio_file.spec.channels as usize;
+                let total_frames = audio_file.sample_count / channels;
+                let file_rate_f = audio_file.spec.sample_rate as f64;
+                let file_frame_pos = song_frame * file_rate_f / device_rate_f;
+                if file_frame_pos < 0.0 {
+                    continue;
+                }
+                let file_frame_lo = file_frame_pos.floor() as usize;
+                if file_frame_lo + 1 >= total_frames {
+                    continue; // Past end of this file
+                }
+                let frac = (file_frame_pos - file_frame_lo as f64) as f32;
+                let file_frame_hi = file_frame_lo + 1;
+
                 if channels == 1 {
-                    // Mono file
-                    if sample_position >= audio_file.sample_count {
-                        continue; // Past end of this file
-                    }
-                    let file_sample = audio_file.get_sample(sample_position) * file_vol;
-
-                    // Duplicate mono to stereo
-                    mixed_left += file_sample;
-                    mixed_right += file_sample;
+                    let s_lo = audio_file.get_sample(file_frame_lo);
+                    let s_hi = audio_file.get_sample(file_frame_hi);
+                    let s = (s_lo * (1.0 - frac) + s_hi * frac) * file_vol;
+                    mixed_left += s;
+                    mixed_right += s;
                 } else if channels == 2 {
-                    // Stereo file - samples are interleaved L,R,L,R...
-                    let stereo_position = sample_position * 2;
-                    if stereo_position + 1 >= audio_file.sample_count {
-                        continue; // Past end of this file
-                    }
-
-                    let left_sample = audio_file.get_sample(stereo_position) * file_vol;
-                    let right_sample = audio_file.get_sample(stereo_position + 1) * file_vol;
-
-                    mixed_left += left_sample;
-                    mixed_right += right_sample;
+                    let lo_idx = file_frame_lo * 2;
+                    let hi_idx = file_frame_hi * 2;
+                    let l_lo = audio_file.get_sample(lo_idx);
+                    let l_hi = audio_file.get_sample(hi_idx);
+                    let r_lo = audio_file.get_sample(lo_idx + 1);
+                    let r_hi = audio_file.get_sample(hi_idx + 1);
+                    let l = (l_lo * (1.0 - frac) + l_hi * frac) * file_vol;
+                    let r = (r_lo * (1.0 - frac) + r_hi * frac) * file_vol;
+                    mixed_left += l;
+                    mixed_right += r;
                 }
             }
 
@@ -171,27 +203,27 @@ impl MultiAudioEngineInner {
             output_sample[1] = (mixed_right * master_vol).clamp(-1.0, 1.0);
         }
 
-        // Update position
+        // Advance song-time position by `frames_processed * speed`
         let frames_processed = output.len() / 2;
-        self.position_samples
-            .fetch_add(frames_processed, Ordering::SeqCst);
+        let new_position = position_frames + (frames_processed as f64) * speed;
+        self.position_frames.store(new_position, Ordering::SeqCst);
 
         // Check if we've reached the end
-        let new_position = self.position_samples.load(Ordering::SeqCst);
         let max_duration = self.get_max_duration_samples();
-        if new_position >= max_duration {
+        if new_position >= max_duration as f64 {
             self.is_playing.store(false, Ordering::SeqCst);
         }
     }
 
     fn snapshot_state(&self) -> MultiAudioState {
-        let position_samples = self.position_samples.load(Ordering::SeqCst);
-        let position_seconds = position_samples as f64 / self.sample_rate as f64;
+        let position_frames = self.position_frames.load(Ordering::SeqCst);
+        let position_seconds = position_frames / self.sample_rate as f64;
 
         let max_duration_samples = self.get_max_duration_samples();
         let duration_seconds = max_duration_samples as f64 / self.sample_rate as f64;
 
         let master_volume = self.master_volume.load(Ordering::SeqCst);
+        let playback_speed = self.playback_speed.load(Ordering::SeqCst);
         let file_volumes: Vec<f32> = self
             .file_volumes
             .iter()
@@ -211,6 +243,7 @@ impl MultiAudioEngineInner {
             position_seconds,
             duration_seconds,
             master_volume,
+            playback_speed,
             file_count: self.audio_files.len(),
             file_volumes,
             file_mutes,
@@ -361,14 +394,12 @@ impl MultiAudioEngine {
             MultiAudioCommand::Stop => {
                 debug!("Processing stop command");
                 inner.is_playing.store(false, Ordering::SeqCst);
-                inner.position_samples.store(0, Ordering::SeqCst);
+                inner.position_frames.store(0.0, Ordering::SeqCst);
             }
             MultiAudioCommand::Seek(position_seconds) => {
                 debug!("Processing seek command to {}s", position_seconds);
-                let sample_position = (position_seconds * inner.sample_rate as f64) as usize;
-                inner
-                    .position_samples
-                    .store(sample_position, Ordering::SeqCst);
+                let position_frames = position_seconds.max(0.0) * inner.sample_rate as f64;
+                inner.position_frames.store(position_frames, Ordering::SeqCst);
             }
             MultiAudioCommand::LoadFiles(_file_paths) => {
                 debug!("Processing load files command");
@@ -394,6 +425,11 @@ impl MultiAudioEngine {
                 inner
                     .master_volume
                     .store(volume.clamp(0.0, 2.0), Ordering::SeqCst);
+            }
+            MultiAudioCommand::SetPlaybackSpeed(speed) => {
+                let clamped = speed.clamp(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED);
+                debug!("Setting playback speed to {}", clamped);
+                inner.playback_speed.store(clamped, Ordering::SeqCst);
             }
         }
     }

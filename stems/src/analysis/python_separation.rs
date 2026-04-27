@@ -13,8 +13,6 @@ pub struct SeparationResult {
     pub stem_dir: Option<String>,
     #[serde(default)]
     pub generated_files: Vec<String>,
-    #[serde(default)]
-    pub drum_split_performed: bool,
     pub error: Option<String>,
 }
 

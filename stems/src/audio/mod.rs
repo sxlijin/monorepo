@@ -11,6 +11,8 @@ pub mod wav_loader;
 pub use device_manager::{AudioDevice, DeviceManager};
 pub use engine::{AudioCommand, AudioEngine, AudioEngineState};
 pub use metadata::{extract_metadata, extract_metadata_from_first_file, SongMetadata};
-pub use multi_engine::{MultiAudioCommand, MultiAudioEngine, MultiAudioState};
+pub use multi_engine::{
+    MultiAudioCommand, MultiAudioEngine, MultiAudioState, MAX_PLAYBACK_SPEED, MIN_PLAYBACK_SPEED,
+};
 pub use stem_discovery::{StemDiscovery, StemMatch};
 pub use wav_loader::{AudioFile, MappedAudioFile, WavLoader};

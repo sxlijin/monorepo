@@ -200,11 +200,15 @@ impl WavLoader {
             .collect::<Result<Vec<_>, _>>()
             .context("Failed to find sample data")?;
 
-        // For simplicity, assume standard WAV header size (44 bytes for basic WAV)
+        // WARNING: hardcoded — only correct for plain WAVs whose data chunk
+        // immediately follows fmt. Files with extra chunks before data (e.g.
+        // LIST/INFO metadata written by demucs/torchaudio) start their PCM
+        // bytes later than 44, so the first samples we read here are header
+        // bytes interpreted as audio. Walk the chunk list properly to fix.
         let data_offset = 44usize;
 
         let sample_count = ((mmap.len() - data_offset) / std::mem::size_of::<i16>())
-            .min(spec.channels as usize * spec.sample_rate as usize * 300); // Max 5 minutes
+            .min(spec.channels as usize * spec.sample_rate as usize * 600); // Max 10 minutes
 
         let duration_seconds =
             sample_count as f64 / (spec.sample_rate as f64 * spec.channels as f64);
