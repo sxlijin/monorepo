@@ -157,6 +157,13 @@ impl WaveformComponent {
         let center_y = self.component_height / 2.0;
         let max_amplitude = self.component_height * 0.45; // Leave space for center line
 
+        // 50%-opacity "ghost" of the waveform color, used to overlay the
+        // original (un-scaled) bar against the volume-scaled bar.
+        let (wr, wg, wb, _wa) = self.waveform_color.get_rgba_f();
+        let ghost_color = QColor::from_rgba_f(wr, wg, wb, 0.5);
+        let volume = self.current_volume;
+        let volume_is_unity = (volume - 1.0).abs() < 1e-9;
+
         // Visible time window with fixed cursor at 20%
         // Important: do NOT clamp start to 0.0. Allow negative start so the
         // viewport is initially offset such that the fixed playhead (20%) aligns
@@ -260,17 +267,50 @@ impl WaveformComponent {
                 (abs_max as f64) / 32768.0
             };
 
-            // Scale symmetric envelope to pixels and draw centered bar
-            let amp_px = amp_unit * self.current_volume * max_amplitude;
-            let bar_top = center_y - amp_px;
-            let bar_height = (amp_px * 2.0).max(1.0);
-            let bar_rect = QRectF {
+            // Scale symmetric envelope to pixels and draw centered bars.
+            //
+            // We render two bars per column to make volume scaling visually
+            // obvious:
+            //   - "scaled" bar = amp * volume      (the truth of what's playing)
+            //   - "orig"   bar = amp               (reference at 100% volume)
+            //
+            // Layer ordering (drawn back-to-front):
+            //   - volume == 1: bars coincide; draw scaled only.
+            //   - volume <  1: orig (taller) behind at 50%, scaled in front at
+            //     full color. The scaled bar fully covers its region; the
+            //     "extra" of the original sticks out above at 50%.
+            //   - volume >  1: scaled (taller) behind at full color, orig
+            //     (shorter) in front at 50%. The 50% original blends over the
+            //     full-color scaled in the inner region; the scaled "extra"
+            //     shows through above at full color.
+            let scaled_amp_px = amp_unit * volume * max_amplitude;
+            let scaled_rect = QRectF {
                 x: x as f64,
-                y: bar_top,
+                y: center_y - scaled_amp_px,
                 width: 1.0,
-                height: bar_height,
+                height: (scaled_amp_px * 2.0).max(1.0),
             };
-            painter.fill_rect(bar_rect, QBrush::from_color(self.waveform_color));
+
+            if volume_is_unity {
+                painter.fill_rect(scaled_rect, QBrush::from_color(self.waveform_color));
+                continue;
+            }
+
+            let orig_amp_px = amp_unit * max_amplitude;
+            let orig_rect = QRectF {
+                x: x as f64,
+                y: center_y - orig_amp_px,
+                width: 1.0,
+                height: (orig_amp_px * 2.0).max(1.0),
+            };
+
+            if volume < 1.0 {
+                painter.fill_rect(orig_rect, QBrush::from_color(ghost_color));
+                painter.fill_rect(scaled_rect, QBrush::from_color(self.waveform_color));
+            } else {
+                painter.fill_rect(scaled_rect, QBrush::from_color(self.waveform_color));
+                painter.fill_rect(orig_rect, QBrush::from_color(ghost_color));
+            }
         }
 
         // Draw center line

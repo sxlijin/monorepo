@@ -1304,6 +1304,10 @@ impl MultiBridge {
                 self.multi_engine = Some(engine);
                 self.start_state_update_worker();
 
+                // Apply default per-stem volumes on song load.
+                self.set_file_volume(StemType::Drums.into_index() as i32, 0.5);
+                self.set_file_volume(StemType::Other.into_index() as i32, 1.5);
+
                 // Start waveform generation phase
                 tracing::info!(
                     "RUST TRANSITION DEBUG: Starting GeneratingWaveforms phase for {} files",

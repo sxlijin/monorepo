@@ -19,8 +19,8 @@ if [[ -z "$WINDOW_ID" ]]; then
   exit 1
 fi
 
-echo "window $WINDOW_ID found, waiting 10s before capture..."
-sleep 10
+echo "window $WINDOW_ID found, waiting 60s before capture..."
+sleep 60
 
 mkdir -p screenshots
 OUT="screenshots/$(date +%Y%m%d-%H%M%S).png"

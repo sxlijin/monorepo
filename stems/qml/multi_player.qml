@@ -43,7 +43,7 @@ ApplicationWindow {
     readonly property int minWaveformHeight: 150   // Minimum height per waveform
     readonly property int waveformSpacing: 20
     readonly property int stemCount: 4
-    property real waveformTimeWidthSecs: 5.0  // seconds of audio to show in waveform viewport (modifiable for zoom)
+    property real waveformTimeWidthSecs: 30.0  // seconds of audio to show in waveform viewport (modifiable for zoom)
     readonly property int waveformControlsWidth: 120  // fixed width for controls panel
     readonly property int transportControlsHeight: 100  // fixed height for transport controls section
     
@@ -457,6 +457,12 @@ ApplicationWindow {
                                         }
                                         function onLoading_state_changed() {
                                             waveformView.request_update()
+                                        }
+                                        function onPlayback_settings_changed() {
+                                            // Push per-stem volume into the painted item, since
+                                            // a bare get_file_volume() call has no NOTIFY and
+                                            // QML won't re-evaluate the binding on its own.
+                                            waveformView.current_volume = multiBridge.get_file_volume(stemRect.index)
                                         }
                                     }
                                 }
