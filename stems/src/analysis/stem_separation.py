@@ -3,6 +3,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+_STEMS_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 def separate_stems(audio_path: str, stems_root: str) -> dict:
     result = {
@@ -48,7 +50,7 @@ def separate_stems(audio_path: str, stems_root: str) -> dict:
             str(working_audio_path),
         ]
 
-        process = subprocess.run(cmd, capture_output=True, text=True)
+        process = subprocess.run(cmd, cwd=_STEMS_PROJECT_ROOT, capture_output=True, text=True)
         if process.returncode != 0:
             stderr = process.stderr.strip()
             stdout = process.stdout.strip()

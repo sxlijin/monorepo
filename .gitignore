@@ -22,3 +22,6 @@ dist/
 
 # Logs
 *.log
+
+# Spleeter pretrained models
+/pretrained_models/
