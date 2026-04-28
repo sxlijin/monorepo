@@ -428,7 +428,7 @@ ApplicationWindow {
                                                 var volDelta = wheel.angleDelta.y / 120.0
                                                 var volumeStep = 0.1
                                                 var currentVolume = multiBridge.get_file_volume(stemRect.index)
-                                                var newVolume = Math.max(0.0, Math.min(2.0, currentVolume + volDelta * volumeStep))
+                                                var newVolume = Math.max(0.0, Math.min(1.0, currentVolume + volDelta * volumeStep))
                                                 multiBridge.set_file_volume(stemRect.index, newVolume)
                                             }
                                         }
@@ -508,8 +508,8 @@ ApplicationWindow {
                                                         var volumeStep = 0.1  // 10% of full range per wheel notch
                                                         var newVolume = volumeSlider.value + (delta * volumeStep)
                                                         
-                                                        // Clamp to slider range (0.0 to 2.0)
-                                                        newVolume = Math.max(0.0, Math.min(2.0, newVolume))
+                                                        // Clamp to slider range (0.0 to 1.0)
+                                                        newVolume = Math.max(0.0, Math.min(1.0, newVolume))
                                                         
                                                         volumeSlider.value = newVolume
                                                         multiBridge.set_file_volume(stemRect.index, newVolume)
@@ -525,7 +525,7 @@ ApplicationWindow {
                                                     radius: 2.5
                                                     
                                                     property bool updatingFromBridge: false
-                                                    property real value: multiBridge ? Math.min(2.0, multiBridge.get_file_volume(stemRect.index)) : 1.0
+                                                    property real value: multiBridge ? multiBridge.get_file_volume(stemRect.index) : 1.0
                                                     property bool isHovered: volumeSliderMouseArea.containsMouse
                                                     
                                                     // Active fill indicator
@@ -534,7 +534,7 @@ ApplicationWindow {
                                                         anchors.bottom: parent.bottom
                                                         anchors.left: parent.left
                                                         anchors.right: parent.right
-                                                        height: Math.min(1.0, volumeSlider.value / 2.0) * parent.height
+                                                        height: Math.min(1.0, volumeSlider.value) * parent.height
                                                         color: stemRect.currentStemColor
                                                         opacity: 0.4
                                                         radius: 2.5
@@ -548,7 +548,7 @@ ApplicationWindow {
                                                         radius: 6
                                                         color: volumeSlider.isHovered ? stemRect.currentStemColorBright : stemRect.currentStemColorDark
                                                         x: parent.width / 2 - width / 2
-                                                        y: (1 - Math.min(1.0, volumeSlider.value / 2.0)) * (parent.height - height)
+                                                        y: (1 - Math.min(1.0, volumeSlider.value)) * (parent.height - height)
                                                         
                                                         Behavior on color {
                                                             ColorAnimation { duration: 150 }
@@ -565,15 +565,13 @@ ApplicationWindow {
                                                         
                                                         onClicked: function(mouse) {
                                                             if (!multiBridge) return
-                                                            let normalized = Math.max(0, Math.min(1, 1 - (mouse.y / height)))
-                                                            let newVolume = normalized * 2.0
+                                                            let newVolume = Math.max(0, Math.min(1, 1 - (mouse.y / height)))
                                                             multiBridge.set_file_volume(stemRect.index, newVolume)
                                                         }
-                                                        
+
                                                         onPositionChanged: function(mouse) {
                                                             if (pressed && multiBridge) {
-                                                                let normalized = Math.max(0, Math.min(1, 1 - (mouse.y / height)))
-                                                                let newVolume = normalized * 2.0
+                                                                let newVolume = Math.max(0, Math.min(1, 1 - (mouse.y / height)))
                                                                 multiBridge.set_file_volume(stemRect.index, newVolume)
                                                             }
                                                         }
@@ -585,7 +583,7 @@ ApplicationWindow {
                                                         function onPlayback_settings_changed() {
                                                             if (multiBridge) {
                                                                 volumeSlider.updatingFromBridge = true
-                                                                volumeSlider.value = Math.min(2.0, multiBridge.get_file_volume(stemRect.index))
+                                                                volumeSlider.value = multiBridge.get_file_volume(stemRect.index)
                                                                 volumeSlider.updatingFromBridge = false
                                                             }
                                                         }
@@ -1200,14 +1198,14 @@ ApplicationWindow {
                                     radius: Styles.transportVolumeSliderHeight / 2
                                     anchors.verticalCenter: parent.verticalCenter
                                     
-                                    property real value: multiBridge ? Math.min(2.0, multiBridge.master_volume) : 1.0
+                                    property real value: multiBridge ? multiBridge.master_volume : 1.0
                                     property bool isHovered: volumeMouseArea.containsMouse
                                     
                                     Rectangle {
                                         id: masterVolumeProgress
                                         anchors.left: parent.left
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: Math.min(1.0, masterVolumeSlider.value / 2.0) * parent.width
+                                        width: Math.min(1.0, masterVolumeSlider.value) * parent.width
                                         height: parent.height
                                         color: masterVolumeSlider.isHovered ? Styles.transportSliderHoverColor : Styles.transportSliderColor
                                         radius: Styles.transportVolumeSliderHeight / 2
@@ -1225,7 +1223,7 @@ ApplicationWindow {
                                         radius: 6
                                         color: Styles.transportSliderHandleColor
                                         anchors.verticalCenter: parent.verticalCenter
-                                        x: Math.min(1.0, masterVolumeSlider.value / 2.0) * parent.width - width / 2
+                                        x: Math.min(1.0, masterVolumeSlider.value) * parent.width - width / 2
                                         
                                         Behavior on opacity {
                                             NumberAnimation { duration: 150 }
@@ -1241,15 +1239,13 @@ ApplicationWindow {
                                         
                                         onClicked: function(mouse) {
                                             if (!multiBridge) return
-                                            let normalized = Math.max(0, Math.min(1, mouse.x / width))
-                                            let newVolume = normalized * 2.0
+                                            let newVolume = Math.max(0, Math.min(1, mouse.x / width))
                                             multiBridge.set_master_volume(newVolume)
                                         }
-                                        
+
                                         onPositionChanged: function(mouse) {
                                             if (pressed && multiBridge) {
-                                                let normalized = Math.max(0, Math.min(1, mouse.x / width))
-                                                let newVolume = normalized * 2.0
+                                                let newVolume = Math.max(0, Math.min(1, mouse.x / width))
                                                 multiBridge.set_master_volume(newVolume)
                                             }
                                         }

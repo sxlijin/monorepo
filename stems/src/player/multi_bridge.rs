@@ -674,7 +674,7 @@ impl MultiBridge {
         tracing::info!("Set master volume to: {:.2}", volume);
 
         // Update UI state immediately for responsiveness
-        self.master_volume = volume.clamp(0.0, 2.0);
+        self.master_volume = volume.clamp(0.0, 1.0);
         self.master_volume_changed();
 
         // Send command to audio engine
@@ -693,7 +693,7 @@ impl MultiBridge {
     }
 
     fn set_file_volume(&mut self, file_index: i32, volume: f64) {
-        let volume = volume.clamp(0.0, 2.0);
+        let volume = volume.clamp(0.0, 1.0);
         tracing::info!("Set file {} volume to: {:.2}", file_index, volume);
         let Some(engine_index) = self.map_to_engine_index(file_index) else {
             return;
@@ -1306,7 +1306,6 @@ impl MultiBridge {
 
                 // Apply default per-stem volumes on song load.
                 self.set_file_volume(StemType::Drums.into_index() as i32, 0.5);
-                self.set_file_volume(StemType::Other.into_index() as i32, 1.5);
 
                 // Start waveform generation phase
                 tracing::info!(

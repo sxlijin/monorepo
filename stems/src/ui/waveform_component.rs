@@ -269,20 +269,10 @@ impl WaveformComponent {
 
             // Scale symmetric envelope to pixels and draw centered bars.
             //
-            // We render two bars per column to make volume scaling visually
-            // obvious:
-            //   - "scaled" bar = amp * volume      (the truth of what's playing)
-            //   - "orig"   bar = amp               (reference at 100% volume)
-            //
-            // Layer ordering (drawn back-to-front):
-            //   - volume == 1: bars coincide; draw scaled only.
-            //   - volume <  1: orig (taller) behind at 50%, scaled in front at
-            //     full color. The scaled bar fully covers its region; the
-            //     "extra" of the original sticks out above at 50%.
-            //   - volume >  1: scaled (taller) behind at full color, orig
-            //     (shorter) in front at 50%. The 50% original blends over the
-            //     full-color scaled in the inner region; the scaled "extra"
-            //     shows through above at full color.
+            // Volume is clamped to [0, 1]. At unity, draw the scaled bar
+            // alone. Below unity, draw the un-scaled "orig" bar behind at
+            // 50% alpha and the scaled bar in front at full color, so the
+            // taller orig sticks out above and below the scaled bar.
             let scaled_amp_px = amp_unit * volume * max_amplitude;
             let scaled_rect = QRectF {
                 x: x as f64,
@@ -304,13 +294,8 @@ impl WaveformComponent {
                 height: (orig_amp_px * 2.0).max(1.0),
             };
 
-            if volume < 1.0 {
-                painter.fill_rect(orig_rect, QBrush::from_color(ghost_color));
-                painter.fill_rect(scaled_rect, QBrush::from_color(self.waveform_color));
-            } else {
-                painter.fill_rect(scaled_rect, QBrush::from_color(self.waveform_color));
-                painter.fill_rect(orig_rect, QBrush::from_color(ghost_color));
-            }
+            painter.fill_rect(orig_rect, QBrush::from_color(ghost_color));
+            painter.fill_rect(scaled_rect, QBrush::from_color(self.waveform_color));
         }
 
         // Draw center line
