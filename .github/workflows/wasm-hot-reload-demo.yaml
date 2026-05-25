@@ -1,0 +1,183 @@
+name: wasm-hot-reload-demo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wasm-hot-reload-demo/**'
+      - '.github/workflows/wasm-hot-reload-demo.yaml'
+  pull_request:
+    paths:
+      - 'wasm-hot-reload-demo/**'
+      - '.github/workflows/wasm-hot-reload-demo.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit-tests:
+    name: "Unit Tests (jsdom)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9.12.0'
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: wasm-hot-reload-demo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: wasm-hot-reload-demo
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "wasm-hot-reload-demo -> target"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add wasm32-unknown-unknown
+        working-directory: wasm-hot-reload-demo
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM
+        run: pnpm --filter @demo/pkg-playground build:wasm
+        working-directory: wasm-hot-reload-demo
+
+      - name: Run unit tests
+        run: pnpm --filter app-vscode-webview test:unit:run
+        working-directory: wasm-hot-reload-demo
+
+  browser-tests:
+    name: "Browser Tests (Playwright)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9.12.0'
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: wasm-hot-reload-demo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: wasm-hot-reload-demo
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "wasm-hot-reload-demo -> target"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add wasm32-unknown-unknown
+        working-directory: wasm-hot-reload-demo
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM
+        run: pnpm --filter @demo/pkg-playground build:wasm
+        working-directory: wasm-hot-reload-demo
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+        working-directory: wasm-hot-reload-demo/app-vscode-webview
+
+      - name: Run browser tests
+        run: pnpm --filter app-vscode-webview test:browser:run
+        working-directory: wasm-hot-reload-demo
+
+  hmr-tests:
+    name: "HMR Tests (Hot Reload)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9.12.0'
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: wasm-hot-reload-demo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: wasm-hot-reload-demo
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "wasm-hot-reload-demo -> target"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add wasm32-unknown-unknown
+        working-directory: wasm-hot-reload-demo
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM (initial)
+        run: pnpm --filter @demo/pkg-playground build:wasm
+        working-directory: wasm-hot-reload-demo
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+        working-directory: wasm-hot-reload-demo/app-vscode-webview
+
+      - name: Run HMR tests
+        run: pnpm --filter app-vscode-webview test:hmr
+        working-directory: wasm-hot-reload-demo
+        timeout-minutes: 5
+        env:
+          DEBUG_HMR: "1"

@@ -1,0 +1,21 @@
+[package]
+name = "playground_wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+console_error_panic_hook = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true }
+wee_alloc = { workspace = true, optional = true }
+
+[dev-dependencies]
+wasm-bindgen-test = { workspace = true }
+
+[features]
+default = []
+console_error_panic = ["console_error_panic_hook"]
+small_allocator = ["wee_alloc"]

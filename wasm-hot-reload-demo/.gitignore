@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.turbo/
+.vite/
+
+# WASM output (built by wasm-pack)
+pkg-playground/wasm/
+
+# Cargo
+target/
+target-*/
+
+# IDE
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Logs
+*.log

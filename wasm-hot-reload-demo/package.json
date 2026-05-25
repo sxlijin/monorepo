@@ -1,0 +1,16 @@
+{
+  "name": "wasm-hot-reload-demo",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Self-contained replication of the Webview Tests CI job — Vite + WASM hot reload demo.",
+  "scripts": {
+    "build:wasm": "wasm-pack build crates/playground_wasm --target web --out-dir ../../pkg-playground/wasm --release",
+    "dev:webview": "pnpm --filter app-vscode-webview dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
