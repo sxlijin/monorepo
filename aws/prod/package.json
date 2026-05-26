@@ -1,0 +1,27 @@
+{
+  "name": "@roundcolors/prod",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "prod": "bin/prod.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.257.0",
+    "constructs": "^10.6.0",
+    "source-map-support": "^0.5.21"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "aws-cdk": "^2.1124.1",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.6.2"
+  }
+}

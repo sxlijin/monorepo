@@ -1,0 +1,11 @@
+# CDK
+cdk.out/
+*.d.ts
+dist/
+
+# Compiled JS emitted alongside TS sources
+bin/*.js
+lib/*.js
+
+# Local CDK context cache
+cdk.context.json
