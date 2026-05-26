@@ -3,7 +3,7 @@ import { Construct } from 'constructs';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 
-export interface RoundColorsDnsStackProps extends cdk.StackProps {
+export interface RoundcolorsDnsStackProps extends cdk.StackProps {
   /** Apex domain for the site, e.g. "roundcolors.com". */
   readonly domainName: string;
 }
@@ -18,11 +18,11 @@ export interface RoundColorsDnsStackProps extends cdk.StackProps {
  * Route53 is a global service, so records added from the us-west-2 site stack
  * still land in this zone.
  */
-export class RoundColorsDnsStack extends cdk.Stack {
+export class RoundcolorsDnsStack extends cdk.Stack {
   readonly hostedZone: route53.IHostedZone;
   readonly certificate: acm.ICertificate;
 
-  constructor(scope: Construct, id: string, props: RoundColorsDnsStackProps) {
+  constructor(scope: Construct, id: string, props: RoundcolorsDnsStackProps) {
     super(scope, id, props);
 
     const { domainName } = props;

@@ -1,0 +1,5 @@
+app_identifier("com.roundcolors.barcodes")
+
+# Apple ID is only used as a fallback; this setup authenticates with an
+# App Store Connect API key (see Fastfile + fastlane/README.md).
+apple_id(ENV["FASTLANE_APPLE_ID"]) if ENV["FASTLANE_APPLE_ID"]

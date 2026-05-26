@@ -1,0 +1,3 @@
+[tools]
+# Newest stable Ruby — fastlane requires 3.3+. `op` is inherited from the repo-root mise.toml.
+ruby = "4.0.5"

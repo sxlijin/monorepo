@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Candidate 1: Classic Barcode — literal, clean, instantly readable -->
+  <rect width="1024" height="1024" fill="#FFFFFF"/>
+  <g fill="#111111">
+    <rect x="208" y="312" width="22" height="400"/>
+    <rect x="244" y="312" width="12" height="400"/>
+    <rect x="272" y="312" width="34" height="400"/>
+    <rect x="320" y="312" width="12" height="400"/>
+    <rect x="348" y="312" width="22" height="400"/>
+    <rect x="386" y="312" width="46" height="400"/>
+    <rect x="448" y="312" width="12" height="400"/>
+    <rect x="476" y="312" width="22" height="400"/>
+    <rect x="512" y="312" width="34" height="400"/>
+    <rect x="560" y="312" width="12" height="400"/>
+    <rect x="588" y="312" width="22" height="400"/>
+    <rect x="624" y="312" width="46" height="400"/>
+    <rect x="686" y="312" width="12" height="400"/>
+    <rect x="714" y="312" width="34" height="400"/>
+    <rect x="762" y="312" width="22" height="400"/>
+    <rect x="798" y="312" width="12" height="400"/>
+  </g>
+</svg>

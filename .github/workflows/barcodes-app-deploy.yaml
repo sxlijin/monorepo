@@ -1,0 +1,69 @@
+name: barcodes-app deploy
+
+# Manual deploy of the Barcodes iOS app to App Store Connect.
+# Secrets come from 1Password via a scoped service account (read-only on the `roundcolors` vault);
+# tools (Ruby, op) come from mise. Xcode is provided by the macOS runner image, not mise.
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "fastlane lane to run"
+        type: choice
+        default: release
+        options:
+          - release   # gym build/archive + deliver binary upload
+          - metadata  # text + screenshots only (no binary, no signing)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+    working-directory: barcodes-app
+
+jobs:
+  deploy:
+    name: "Deploy (${{ inputs.lane }})"
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.ONEPASSWORD_SERVICE_ACCOUNT_TOKEN }}
+      LANE: ${{ inputs.lane }}
+      OP_ITEM: op://roundcolors/barcodes-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the tools pinned in mise.toml (Ruby from barcodes-app/mise.toml, op inherited
+      # from the repo-root mise.toml) and caches them between runs.
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.5.15
+          working_directory: barcodes-app
+          cache: true
+
+      - name: Deploy
+        run: |
+          set -euo pipefail
+
+          # App Store Connect API key — the only credential needed.
+          # The `release` lane signs via Xcode cloud-managed distribution signing
+          # (`-allowProvisioningUpdates` + this API key), so there is no .p12 / keychain to set up;
+          # this mirrors what works locally, where no distribution cert exists in the keychain.
+          export ASC_KEY_ID="$(mise exec -- op read "$OP_ITEM/app_store_connect_key_id")"
+          export ASC_ISSUER_ID="$(mise exec -- op read "$OP_ITEM/app_store_connect_issuer_id")"
+          mkdir -p fastlane
+          mise exec -- op read "$OP_ITEM/app_store_connect_auth_key" > fastlane/AuthKey.p8
+
+          mise exec -- bundle install
+          mise exec -- bundle exec fastlane "$LANE"
+
+      - name: Clean up secrets
+        if: always()
+        run: rm -f fastlane/AuthKey.p8 || true

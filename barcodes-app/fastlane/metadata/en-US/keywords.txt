@@ -1,0 +1,1 @@
+barcode,scanner,loyalty,membership,gym,library,wallet,qr,code,scan,card,pass,saver

@@ -1,0 +1,101 @@
+default_platform(:ios)
+
+# Authenticates with an App Store Connect API key.
+# Set these in your environment (see fastlane/README.md):
+#   ASC_KEY_ID        - the key's Key ID
+#   ASC_ISSUER_ID     - your team's Issuer ID
+#   ASC_KEY_FILEPATH  - path to the .p8 file (default: fastlane/AuthKey.p8, gitignored)
+def asc_api_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_filepath: ENV.fetch("ASC_KEY_FILEPATH", "fastlane/AuthKey.p8"),
+    in_house: false
+  )
+end
+
+# Reviewer contact info is PII and lives only in 1Password (never the repo). Materialize the
+# review_information files `deliver` expects from the op item, run the block, then delete them.
+# Requires `op` signed in (desktop integration locally, or OP_SERVICE_ACCOUNT_TOKEN in CI).
+def with_reviewer_info
+  item = "op://roundcolors/barcodes-app"
+  fields = {
+    "first_name"   => "app_store_connect_reviewer_first_name",
+    "last_name"    => "app_store_connect_reviewer_last_name",
+    "phone_number" => "app_store_connect_reviewer_phone_number",
+  }
+  dir = File.join(__dir__, "metadata", "review_information")
+  written = []
+  fields.each do |file, field|
+    value = `op read "#{item}/#{field}"`.chomp
+    UI.user_error!("op read failed for #{field} (is op signed in?)") unless $?.success?
+    path = File.join(dir, "#{file}.txt")
+    File.write(path, value)
+    written << path
+  end
+  yield
+ensure
+  written.each { |p| File.delete(p) if File.exist?(p) }
+end
+
+platform :ios do
+  desc "Push App Store metadata + screenshots (no binary) to App Store Connect"
+  lane :metadata do
+    with_reviewer_info do
+      upload_to_app_store(
+        api_key: asc_api_key,
+        app_identifier: "com.roundcolors.barcodes",
+        skip_binary_upload: true,   # binary is uploaded from Xcode Organizer / Archive
+        skip_app_version_update: false,
+        overwrite_screenshots: true,
+        submit_for_review: false,   # flip to true (and set submission_information) to auto-submit
+        force: true,                # skip the interactive HTML preview confirmation
+        precheck_include_in_app_purchases: false,
+        run_precheck_before_submit: false
+      )
+    end
+  end
+
+  desc "Build the app (gym) and upload the binary to App Store Connect (deliver)"
+  lane :release do
+    require "shellwords"
+    key_path = ENV["ASC_KEY_FILEPATH"] ? File.expand_path(ENV["ASC_KEY_FILEPATH"]) : File.expand_path("AuthKey.p8", __dir__)
+    # Let xcodebuild create/update the distribution provisioning profile headlessly,
+    # authenticating with the same App Store Connect API key.
+    auth_args = [
+      "-allowProvisioningUpdates",
+      "-authenticationKeyPath", key_path.shellescape,
+      "-authenticationKeyID", ENV.fetch("ASC_KEY_ID").shellescape,
+      "-authenticationKeyIssuerID", ENV.fetch("ASC_ISSUER_ID").shellescape
+    ].join(" ")
+
+    build_app(
+      project: "barcodes.xcodeproj",
+      scheme: "barcodes",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "build",
+      clean: true,
+      xcargs: auth_args,
+      export_options: { signingStyle: "automatic" }
+    )
+
+    upload_to_app_store(
+      api_key: asc_api_key,
+      app_identifier: "com.roundcolors.barcodes",
+      skip_metadata: true,        # metadata handled by the `metadata` lane
+      skip_screenshots: true,
+      skip_app_version_update: true,
+      submit_for_review: false,   # binary only; submit from App Store Connect
+      run_precheck_before_submit: false
+    )
+  end
+
+  desc "Validate the metadata locally without uploading (no API key needed)"
+  lane :metadata_verify do
+    # `deliver` reads every file under fastlane/metadata and reports parsing issues.
+    UI.message("Metadata files:")
+    Dir.glob("fastlane/metadata/**/*.txt").sort.each { |f| UI.message("  #{f}") }
+    UI.success("Edit the .txt files above, then run: bundle exec fastlane metadata")
+  end
+end
